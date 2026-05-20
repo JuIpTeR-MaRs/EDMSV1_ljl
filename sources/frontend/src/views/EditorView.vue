@@ -608,7 +608,13 @@ const route = useRoute();
 const router = useRouter();
 const { t, locale } = useI18n();
 const auth = useAuthStore();
-const docId = computed(() => Number(route.params.id));
+const docId = computed(() => {
+  if (meta.value && meta.value.id) {
+    return Number(meta.value.id);
+  }
+  const num = Number(route.params.id);
+  return isNaN(num) ? 0 : num;
+});
 const isAdmin = computed(() => !!auth.user?.is_super_admin);
 const isOwner = computed(() => auth.user?.id === meta.value.owner_id);
 
