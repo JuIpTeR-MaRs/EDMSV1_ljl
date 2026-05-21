@@ -22,7 +22,6 @@
         <div class="model-selector">
           <span class="label">{{ t('library.useModel') }}：</span>
           <el-select v-model="aiStore.selectedModel" size="small" style="width: 130px">
-            <el-option label="Spark Lite" value="spark-lite" />
             <el-option label="DeepSeek Chat" value="deepseek" />
           </el-select>
         </div>
@@ -145,7 +144,7 @@ async function askQuestion() {
       body: JSON.stringify({
         doc_ids: props.docIds,
         query: question,
-        ai_model: aiStore.selectedModel || 'spark-lite'
+        ai_model: aiStore.selectedModel || 'deepseek'
       })
     });
 

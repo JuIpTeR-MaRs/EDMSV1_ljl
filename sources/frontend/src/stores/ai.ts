@@ -15,7 +15,7 @@ export const useAiStore = defineStore('ai', () => {
   const editorMessages = ref<AiMessage[]>([]);
 
   // Selected AI model, persisted in localStorage
-  const selectedModel = ref<string>(localStorage.getItem('aiModel') || 'spark-lite');
+  const selectedModel = ref<string>(localStorage.getItem('aiModel') || 'deepseek');
 
   watch(selectedModel, (val) => {
     localStorage.setItem('aiModel', val);

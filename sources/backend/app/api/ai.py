@@ -17,7 +17,7 @@ def ai_chat():
         context_url = data.get("context_url", "")
         doc_context = data.get("doc_context", "")
 
-        ai_model = data.get("ai_model", "spark-lite")
+        ai_model = data.get("ai_model", "deepseek")
         user = current_user()
         user_info = {
             "id": user.id if user else 0,
@@ -52,7 +52,7 @@ def ai_generate():
     if not prompt:
         return jsonify({"error": "No prompt provided"}), 400
         
-    ai_model = data.get("ai_model", "spark-lite")
+    ai_model = data.get("ai_model", "deepseek")
     
     from app.extensions import db
     db.session.remove()
@@ -82,21 +82,19 @@ def import_image():
         # Logic to generate doc number if needed, but let's keep it simple
         doc_number = f"IMG{today_str}{random_str(3)}" 
         
-        doc = Document(
-            owner_id=user.id,
-            title=result["title"],
-            status="draft",
-            doc_number=doc_number
-        )
+        doc = Document()
+        doc.owner_id = user.id
+        doc.title = result["title"]
+        doc.status = "draft"
+        doc.doc_number = doc_number
         db.session.add(doc)
         db.session.flush()
         
-        ver = DocumentVersion(
-            document_id=doc.id,
-            version_no=1,
-            content_json=json.dumps({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": result["content"]}]}]}), # Simplified
-            created_by_id=user.id
-        )
+        ver = DocumentVersion()
+        ver.document_id = doc.id
+        ver.version_no = 1
+        ver.content_json = json.dumps({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": result["content"]}]}]}) # Simplified
+        ver.created_by_id = user.id
         # Actually it's better to store as Markdown if the system supports it, 
         # but the current system seems to use Tiptap JSON. 
         # For simplicity, we'll return the ID and content preview.
@@ -252,7 +250,7 @@ def cross_document_qa():
     data = request.get_json(silent=True) or {}
     doc_ids = data.get("doc_ids", [])
     query = data.get("query", "")
-    ai_model = data.get("ai_model", "spark-lite")
+    ai_model = data.get("ai_model", "deepseek")
     
     if not doc_ids or not query:
         return jsonify({"error": "Missing doc_ids or query"}), 400
@@ -330,7 +328,7 @@ def cross_document_qa():
 def check_logic():
     data = request.get_json(silent=True) or {}
     doc_id = data.get("doc_id")
-    ai_model = data.get("ai_model", "spark-lite")
+    ai_model = data.get("ai_model", "deepseek")
     lang = data.get("lang", "zh")
     
     if not doc_id:

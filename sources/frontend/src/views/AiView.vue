@@ -73,7 +73,6 @@
         <div class="input-footer">
           <div class="footer-left">
             <el-select v-model="aiStore.selectedModel" size="small" class="model-select-mini">
-              <el-option label="Spark Lite" value="spark-lite" />
               <el-option label="DeepSeek Chat" value="deepseek" />
             </el-select>
             <span class="hint">{{ t('aiView.inputHint') }}</span>

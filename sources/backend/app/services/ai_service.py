@@ -32,29 +32,20 @@ class AIService:
         return clean_content
 
     @staticmethod
-    def get_client(ai_model: str = 'spark-lite'):
+    def get_client(ai_model: str = 'deepseek'):
         # Determine if we should ignore system proxies
         ignore_proxies = os.getenv('AI_IGNORE_PROXIES', 'true').lower() == 'true'
         http_client = httpx.Client(trust_env=False) if ignore_proxies else None
 
-        if ai_model == 'deepseek':
-            api_key = os.getenv('DEEPSEEK_API_KEY')
-            base_url = "https://api.deepseek.com"
-            return openai.OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
-        
-        # Default Spark client
-        spark_key = os.getenv('SPARK_API_KEY', "255e556f0c88f9bb663cc0d0f07594c4")
-        spark_secret = os.getenv('SPARK_API_SECRET', "NGVjZjc0ZTYzZTBhNjliODkxMGZjNmU0")
-        api_key = f"{spark_key}:{spark_secret}"
-        
-        base_url = "https://spark-api-open.xf-yun.com/v1"
+        api_key = os.getenv('DEEPSEEK_API_KEY')
+        base_url = "https://api.deepseek.com"
         return openai.OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
 
     @staticmethod
-    def stream_chat(messages, user_context=None, doc_context=None, current_user=None, ai_model='spark-lite'):
+    def stream_chat(messages, user_context=None, doc_context=None, current_user=None, ai_model='deepseek'):
         """Call the real AI API with streaming."""
         client = AIService.get_client(ai_model)
-        model_name = "deepseek-chat" if ai_model == 'deepseek' else "lite"
+        model_name = "deepseek-chat"
         
         try:
             # Robust role detection
@@ -95,29 +86,7 @@ class AIService:
         if user_context:
             context_info += f"\n\n当前页面路径: {user_context}"
 
-        # 💡 Model-specific prompt logic: 
-        # Weaker models like Spark Lite get confused by too many JSON examples.
-        json_rules = ""
-        if ai_model == 'deepseek':
-            json_rules = """
-5. **修改/执行操作（必须使用 JSON 块，需要用户确认）**：
-   - 发起审批流程：
-```json
-{
-  "action": "start_approval",
-  "params": { "doc_id": 123, "approvers": [456], "type": "parallel" },
-  "confirm_prompt": "确认对文档 #123 发起审批流程吗？"
-}
-```
-   - 撤销审批申请：
-```json
-{
-  "action": "recall_approval",
-  "params": { "doc_id": 123 },
-  "confirm_prompt": "确认撤回该审批申请吗？"
-}
-```
-"""
+
         # 💡 Inject real-time stats into system prompt to prevent AI hallucinations
         pending_count = 0
         total_users = 0
@@ -177,24 +146,15 @@ class AIService:
             raw_role = m.get('role', 'user')
             role = 'assistant' if raw_role in ['ai', 'assistant'] else raw_role
             
-            # 💡 Robustness for Spark AI: Only the very first message can be 'system'.
-            # Any subsequent 'system' messages (like our internal feedback) must be 'user' for Spark.
-            if ai_model != 'deepseek' and role == 'system':
-                role = 'user'
-            
             if role not in ['user', 'assistant', 'system']:
                 role = 'user'
                 
             content = m.get('content', '')
             if content:
                 if role == 'user':
-                    if ai_model == 'deepseek':
-                        # DeepSeek is smart enough for strict delimiters
-                        sanitized = AIService._sanitize_and_wrap(content)
-                        content = f"### USER INPUT START ###\n{sanitized}\n### USER INPUT END ###"
-                    else:
-                        # Spark/Other models: keep it simple to improve compliance
-                        content = content.strip()
+                    # DeepSeek is smart enough for strict delimiters
+                    sanitized = AIService._sanitize_and_wrap(content)
+                    content = f"### USER INPUT START ###\n{sanitized}\n### USER INPUT END ###"
                 formatted_messages.append({"role": role, "content": content})
 
         def generate():
@@ -250,10 +210,10 @@ class AIService:
         return generate()
 
     @staticmethod
-    def stream_generate(prompt, action, lang="zh", ai_model='spark-lite'):
+    def stream_generate(prompt, action, lang="zh", ai_model='deepseek'):
         """Task-specific generation for editor (summarize, polish, etc.)."""
         client = AIService.get_client(ai_model)
-        model_name = "deepseek-chat" if ai_model == 'deepseek' else "lite"
+        model_name = "deepseek-chat"
         
         if lang == 'en':
             prompts = {
@@ -668,13 +628,13 @@ class AIService:
         }
 
     @staticmethod
-    def generate_metadata(text: str, ai_model='spark-lite', lang='zh'):
+    def generate_metadata(text: str, ai_model='deepseek', lang='zh'):
         """Extract summary, tags and category from text."""
         if not text or len(text.strip()) < 10:
             return {"summary": "", "tags": "", "category": "未分类"}
             
         client = AIService.get_client(ai_model)
-        model_name = "deepseek-chat" if ai_model == 'deepseek' else "lite"
+        model_name = "deepseek-chat"
         
         if lang == 'en':
             system_msg = "You are a document analysis assistant. Please analyze the provided text content and extract the summary, tags (comma-separated string, max 5), and category. Please be sure to return ONLY a pure JSON object in the following format: {\"summary\": \"...\", \"tags\": \"tag1,tag2\", \"category\": \"...\"}"
@@ -690,7 +650,7 @@ class AIService:
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg}
                 ],
-                response_format={"type": "json_object"} if ai_model == 'deepseek' else None
+                response_format={"type": "json_object"}
             )
             content = response.choices[0].message.content
             
@@ -707,10 +667,10 @@ class AIService:
             return {"summary": "无法生成摘要", "tags": "未提取", "category": "未分类"}
 
     @staticmethod
-    def check_logic(text: str, ai_model='spark-lite', lang='zh'):
+    def check_logic(text: str, ai_model='deepseek', lang='zh'):
         """Check text for logical inconsistencies."""
         client = AIService.get_client(ai_model)
-        model_name = "deepseek-chat" if ai_model == 'deepseek' else "lite"
+        model_name = "deepseek-chat"
         
         if lang == 'en':
             system_msg = "You are a rigorous document review assistant. Please check the following document content for any contradictions, logical inconsistencies, or omissions. If issues are found, please list specific contradiction points and improvement suggestions point by point; if the logic is rigorous and no obvious contradictions are found, please reply 'The document logic is coherent, and no obvious contradiction points were found.'"
@@ -732,10 +692,10 @@ class AIService:
             return f"逻辑检查失败: {str(e)}"
 
     @staticmethod
-    def summarize_opinions(opinions_text: str, doc_text: str = "", ai_model='spark-lite'):
+    def summarize_opinions(opinions_text: str, doc_text: str = "", ai_model='deepseek'):
         """Summarize document content and approval opinions."""
         client = AIService.get_client(ai_model)
-        model_name = "deepseek-chat" if ai_model == 'deepseek' else "lite"
+        model_name = "deepseek-chat"
         
         system_msg = "你是一个审批流总结助手。请结合提供的【文档内容】和【各方审批意见】，生成一份综合摘要。要求包括：1. 文档核心内容概括；2. 审批意见要点总结；3. 后续修改建议。要求结构清晰，直击要点。"
         user_msg = f"### 文档内容 ###\n{doc_text[:2000]}\n\n### 审批意见记录 ###\n{opinions_text}\n### 结束 ###"

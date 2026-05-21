@@ -7,7 +7,6 @@
       </div>
       <div v-if="!isSidebarCollapsed" class="model-selector-wrap" @click.stop>
         <el-select v-model="aiStore.selectedModel" size="small" class="premium-select">
-          <el-option label="Spark Lite" value="spark-lite" />
           <el-option label="DeepSeek Chat" value="deepseek" />
         </el-select>
       </div>

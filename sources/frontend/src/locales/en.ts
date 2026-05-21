@@ -549,7 +549,7 @@ export default {
       meta: "System Meta",
       ready: "System Ready"
     },
-    aiIntro: "The system is currently integrated with **DeepSeek-V3** and **Spark-Lite** LLMs.",
+    aiIntro: "The system is currently integrated with the **DeepSeek-V3** LLM.",
     aiSummary: "The AI assistant has helped users complete **{count}** tasks, including document summarization, auto-tagging, and approval assistance.",
     viewAiAudit: "View AI Audit Center",
     blockchainDetails: "Blockchain Notarized Document Details",

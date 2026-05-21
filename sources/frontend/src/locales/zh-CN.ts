@@ -544,7 +544,7 @@ export default {
       meta: "系统元数据",
       ready: "系统就绪"
     },
-    aiIntro: "系统当前已集成 **DeepSeek-V3** 与 **讯飞星火 Spark-Lite** 大语言模型。",
+    aiIntro: "系统当前已集成 **DeepSeek-V3** 大语言模型。",
     aiSummary: "智能助手已协助用户完成了 **{count}** 次任务，涵盖文档总结、自动标号、审批辅助等核心场景。",
     viewAiAudit: "进入 AI 审计中心查看详情",
     blockchainDetails: "已上链存证文档明细",

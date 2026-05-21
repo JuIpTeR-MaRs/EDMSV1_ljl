@@ -219,10 +219,10 @@
             v-if="editor"
             v-show="meta.can_edit"
             :editor="editor"
-            :tippy-options="{ duration: 100, placement: 'top' }"
+            :tippy-options="{ duration: 100, placement: 'top', interactive: true }"
             class="ai-bubble-menu"
           >
-            <el-dropdown size="small" @command="handleAiAction" trigger="click" placement="top">
+            <el-dropdown size="small" @command="handleAiAction" trigger="click" placement="top" :teleported="false">
               <el-button size="small" type="primary" plain class="ai-btn">✨ {{ t("editor.ai.assistant") }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -257,16 +257,6 @@
               <span style="margin-left: 4px;">{{ t("editor.ai.aiTab") }}</span>
             </template>
             <div class="ai-panel">
-              <!-- AI Model Selection -->
-              <div class="ai-model-selector" style="padding: 10px 12px; border-bottom: 1px solid var(--el-border-color-lighter); background: var(--el-color-primary-light-9);">
-                <el-select v-model="aiStore.selectedModel" size="small" style="width: 100%">
-                  <template #prefix>
-                    <el-icon><MagicStick /></el-icon>
-                  </template>
-                  <el-option label="Spark Lite" value="spark-lite" />
-                  <el-option label="DeepSeek Chat" value="deepseek" />
-                </el-select>
-              </div>
               <!-- AI Tags Section -->
               <div class="ai-tags-section">
                 <div class="section-title">
@@ -1940,17 +1930,6 @@ async function handleAiAction(action: string) {
                 // During streaming, insert as plain text
                 editor.value.chain().focus().insertContent(data.content).run();
               } else if (data.type === "done") {
-                // Generation complete. Replace the raw text with correctly parsed HTML.
-                const currentPos = editor.value.state.selection.to;
-                const html = marked.parse(fullResponse);
-                
-                // Delete the raw text chunks we just inserted and replace with HTML
-                editor.value.chain()
-                  .focus()
-                  .deleteRange({ from: startPos, to: currentPos })
-                  .insertContent(html)
-                  .run();
-                  
                 done = true;
                 break;
               }
@@ -1960,6 +1939,17 @@ async function handleAiAction(action: string) {
           }
         }
       }
+    }
+
+    // Replace the raw text chunks we just inserted with correctly parsed HTML
+    if (fullResponse) {
+      const currentPos = editor.value.state.selection.to;
+      const html = marked.parse(fullResponse);
+      editor.value.chain()
+        .focus()
+        .deleteRange({ from: startPos, to: currentPos })
+        .insertContent(html)
+        .run();
     }
   } catch (err) {
     ElMessage.error("AI generation failed");
