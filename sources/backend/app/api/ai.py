@@ -336,7 +336,7 @@ def check_logic():
         
     from app.models import Document
     from app.extensions import db
-    doc = db.session.get(Document, doc_id)
+    doc = Document.get_by_id_or_number(doc_id)
     if not doc or not doc.current_version:
         return jsonify({"error": "Document not found"}), 404
         
@@ -344,8 +344,8 @@ def check_logic():
     text_content = ""
     try:
         cj = json.loads(ver.content_json) if isinstance(ver.content_json, str) else ver.content_json
-        from app.api.documents import _extract_text_from_tiptap
-        text_content = _extract_text_from_tiptap(cj)
+        from app.utils.text import extract_text_from_tiptap
+        text_content = extract_text_from_tiptap(cj)
     except Exception:
         text_content = doc.title
         
