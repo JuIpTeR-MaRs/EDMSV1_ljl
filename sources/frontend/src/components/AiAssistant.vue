@@ -5,11 +5,7 @@
         <el-icon class="magic-icon"><MagicStick /></el-icon>
         <span v-if="!isSidebarCollapsed">{{ t("nav.aiAssistant") }}</span>
       </div>
-      <div v-if="!isSidebarCollapsed" class="model-selector-wrap" @click.stop>
-        <el-select v-model="aiStore.selectedModel" size="small" class="premium-select">
-          <el-option label="DeepSeek Chat" value="deepseek" />
-        </el-select>
-      </div>
+
       <el-icon v-if="!isSidebarCollapsed" class="expand-icon">
         <component :is="isExpanded ? ArrowDown : ArrowUp" />
       </el-icon>
@@ -706,29 +702,6 @@ const sendMessage = async () => {
   font-weight: 700;
   color: var(--el-color-primary);
   flex-shrink: 0;
-}
-
-.model-selector-wrap {
-  flex: 1;
-  margin-left: 12px;
-  max-width: 120px;
-}
-
-.premium-select :deep(.el-input__inner) {
-  background: rgba(255, 255, 255, 0.4) !important;
-  border: 1px solid rgba(255, 255, 255, 0.5) !important;
-  font-size: 11px !important;
-  height: 24px !important;
-  line-height: 24px !important;
-  border-radius: 6px !important;
-  color: var(--el-color-primary) !important;
-  font-weight: 500;
-}
-
-.premium-select :deep(.el-input__wrapper) {
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 0 4px !important;
 }
 
 .magic-icon {

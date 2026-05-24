@@ -72,9 +72,6 @@
         />
         <div class="input-footer">
           <div class="footer-left">
-            <el-select v-model="aiStore.selectedModel" size="small" class="model-select-mini">
-              <el-option label="DeepSeek Chat" value="deepseek" />
-            </el-select>
             <span class="hint">{{ t('aiView.inputHint') }}</span>
           </div>
           <el-button 
@@ -761,19 +758,6 @@ const executeAction = async (action: any, idx: number) => {
   gap: 12px;
 }
 
-.model-select-mini :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.4) !important;
-  box-shadow: none !important;
-  border: 1px solid rgba(0, 0, 0, 0.05) !important;
-  padding: 0 8px !important;
-  height: 24px !important;
-  border-radius: 6px !important;
-}
-
-.model-select-mini :deep(.el-input__inner) {
-  font-size: 11px !important;
-  color: var(--el-text-color-secondary) !important;
-}
 
 .hint {
   font-size: 13px;
