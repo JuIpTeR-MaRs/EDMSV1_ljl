@@ -534,7 +534,7 @@ export default {
     blockHeight: "模拟区块高度 (Block Height)",
     businessStats: "基础业务数据统计",
     aiInteractionTitle: "AI 智能助手活跃审计",
-    aiTotalInteractions: "AI 交互总数 (Total AI Interactions)",
+    aiTotalInteractions: "AI 交互总数",
     aiModelDistribution: "AI 大模型使用分布",
     templatesCount: "系统模板总数",
     storage: {

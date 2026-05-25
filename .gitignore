@@ -30,6 +30,8 @@ sources/backend/scratch/
 # Data and Caches
 sources/backend/app/qdrant_data/
 sources/backend/qdrant_data/
+sources/backend/app/fastembed_cache/
+sources/backend/fastembed_cache/
 sources/backend/app/static/uploads/
 sources/backend/debug_audio/
 sources/debug_audio/

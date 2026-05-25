@@ -19,8 +19,19 @@ else:
 # Using QdrantClient with built-in fastembed support makes it extremely easy.
 try:
     client = QdrantClient(path=qdrant_path)
+    
+    # Configure FastEmbed cache directory to E drive (under backend/fastembed_cache)
+    fastembed_cache_path = os.environ.get("FASTEMBED_CACHE_PATH")
+    if not fastembed_cache_path:
+        fastembed_cache_path = os.path.join(base_dir, "fastembed_cache")
+    elif not os.path.isabs(fastembed_cache_path):
+        project_root = os.path.dirname(base_dir)
+        fastembed_cache_path = os.path.abspath(os.path.join(project_root, fastembed_cache_path))
+        
+    os.environ["FASTEMBED_CACHE_PATH"] = fastembed_cache_path
+        
     # Set default model for FastEmbed
-    client.set_model("BAAI/bge-small-zh-v1.5")
+    client.set_model("BAAI/bge-small-zh-v1.5", cache_dir=fastembed_cache_path)
     COLLECTION_NAME = "edms_documents"
 except Exception as e:
     print(f"[VectorStore] Failed to initialize Qdrant Client: {e}")

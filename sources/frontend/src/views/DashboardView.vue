@@ -298,20 +298,10 @@
     <el-row :gutter="20" class="chart-row" v-if="!loading && isAdmin">
       <el-col :span="24">
         <el-card shadow="hover" class="chart-card ai-audit-card">
-          <template #header>
-            <div class="card-header">
-              <span>{{ t('dashboard.aiModelDistribution') }}</span>
-              <el-button link :icon="FullScreen" @click="zoomWidget('aiModelDistribution')" />
-            </div>
-          </template>
-          <div class="ai-stats-content">
-            <div class="ai-chart-wrapper">
-              <v-chart class="echart-container ai-pie" :option="aiModelOption" autoresize />
-            </div>
-            <div class="ai-summary-text">
-              <p v-html="renderMarkdown(t('dashboard.aiIntro'))"></p>
-              <p v-html="renderMarkdown(t('dashboard.aiSummary', { count: aiStats.total_interactions }))"></p>
-              <el-button type="primary" size="small" @click="$router.push({ name: 'aiHistory' })">{{ t('dashboard.viewAiAudit') }}</el-button>
+          <div class="ai-stats-content" style="padding: 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px;">
+            <div class="ai-summary-text" style="width: 100%;">
+              <p v-html="renderMarkdown(t('dashboard.aiSummary', { count: aiStats.total_interactions }))" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 16px;"></p>
+              <el-button type="primary" size="large" @click="$router.push({ name: 'aiHistory' })">{{ t('dashboard.viewAiAudit') }}</el-button>
             </div>
           </div>
         </el-card>
@@ -664,7 +654,6 @@ const zoomedOption = computed(() => {
     if (zoomedWidget.value === 'statusDistribution') return statusDistributionOption.value;
     if (zoomedWidget.value === 'storageBreakdown') return storageOption.value;
     if (zoomedWidget.value === 'activityHeatmap') return heatmapOption.value;
-    if (zoomedWidget.value === 'aiModelDistribution') return aiModelOption.value;
     return {};
 });
 
@@ -701,37 +690,6 @@ const statusDistributionOption = computed(() => {
           fontSize: 11
         },
         labelLine: { length: 10, length2: 5 }
-      },
-    ],
-  };
-});
-
-const aiModelOption = computed(() => {
-  return {
-    backgroundColor: 'transparent',
-    tooltip: { trigger: "item", confine: true },
-    legend: { 
-      orient: 'vertical',
-      right: '10%', 
-      top: 'center',
-      textStyle: { fontSize: 12 } 
-    },
-    series: [
-      {
-        name: t('dashboard.aiModelDistribution'),
-        type: "pie",
-        radius: ["40%", "70%"],
-        center: ["40%", "50%"],
-        avoidLabelOverlap: true,
-        data: aiStats.value.model_distribution,
-        itemStyle: {
-          borderRadius: 10,
-          borderColor: "#fff",
-          borderWidth: 2,
-        },
-        label: {
-          show: false
-        }
       },
     ],
   };

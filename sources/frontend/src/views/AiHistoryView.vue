@@ -57,15 +57,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        
-        <el-table-column prop="ai_model" :label="t('aiHistory.colModel')" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.ai_model" size="small" effect="dark" :type="row.ai_model === 'deepseek' ? 'info' : 'primary'">
-              {{ row.ai_model }}
-            </el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
+
         
         <el-table-column :label="t('aiHistory.colQuestion')" min-width="300">
           <template #default="{ row }">
