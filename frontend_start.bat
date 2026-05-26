@@ -4,6 +4,26 @@ echo Starting EDMS frontend service...
 
 REM Change to frontend directory
 cd /d "%~dp0"
+
+REM Check and generate local SSL certificates if missing
+if not exist "localhost+2.pem" (
+    if exist "mkcert.exe" (
+        echo ============================================================
+        echo [SSL] Local development certificates not found.
+        echo [SSL] Generating certificates using mkcert.exe...
+        mkcert.exe localhost 127.0.0.1 ::1
+        echo [SSL] Certificates generated successfully.
+        echo [SSL] IMPORTANT: If this is the first time on this device,
+        echo       please run "mkcert.exe -install" in an ADMINISTRATOR
+        echo       terminal to make your system trust these certificates.
+        echo ============================================================
+        echo.
+    ) else (
+        echo [SSL] mkcert.exe not found. Frontend will run in HTTP mode.
+        echo.
+    )
+)
+
 cd sources\frontend
 
 REM Check if node_modules exists
