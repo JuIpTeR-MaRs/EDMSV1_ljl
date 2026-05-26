@@ -44,3 +44,6 @@ install/
 # Local development certificates and tools
 mkcert.exe
 *.pem
+
+# Environments and secrets
+*.env
