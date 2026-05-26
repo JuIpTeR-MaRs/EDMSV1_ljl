@@ -54,6 +54,22 @@ This manual is for system administrators to perform the installation and deploym
    npm run dev
    ```
 
+#### 【Option C: Local Development with HTTPS (Optional)】
+To run local development over a secure HTTPS protocol (e.g., to debug browser APIs requiring Secure Context or WebSockets), the project supports automatic SSL configuration using `mkcert`.
+
+1. **Install mkcert and trust CA (Only required once per machine)**:
+   * Ensure `mkcert.exe` is in the repository root directory (if not, download the Windows version from [mkcert Releases](https://github.com/FiloSottile/mkcert/releases) and place it in the root).
+   * Open a command shell (PowerShell or CMD) as **Administrator**, navigate to the project root directory, and run:
+     ```powershell
+     .\mkcert.exe -install
+     ```
+     Select **"Yes"** to trust the local CA root certificate.
+
+2. **Start and Auto-Generate Certificates**:
+   * Execute the startup script (e.g., double-click `start_manual.bat` or `frontend_start.bat` in the root).
+   * The startup script will automatically check for certificate files. If missing, it will run `mkcert.exe` to generate `localhost+2.pem` and `localhost+2-key.pem` in the root directory.
+   * Once started, the frontend will automatically run over **`https://localhost:5173`** and be trusted by your browser.
+
 ---
 
 ## 3. Configuration Guide (.env Variables)

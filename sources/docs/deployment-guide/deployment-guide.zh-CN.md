@@ -49,10 +49,26 @@
    ```
 3. **前端启动**：
    ```bash
-   cd sources/frontend
-   npm install
-   npm run dev
-   ```
+    cd sources/frontend
+    npm install
+    npm run dev
+    ```
+
+#### 【选项 C：本地开发启用 HTTPS (可选)】
+为了在本地开发中使用安全的 HTTPS 协议（例如调试部分需要 Secure Context 的浏览器 API 或 WebSockets），项目支持使用 `mkcert` 自动配置本地受信任的 SSL 证书。
+
+1. **安装 mkcert 并信任 CA（仅需首次执行一次）**：
+   * 确保项目根目录下有 `mkcert.exe` 工具（若无，请从 [mkcert Releases](https://github.com/FiloSottile/mkcert/releases) 下载 Windows 对应的二进制文件并重命名放至项目根目录）。
+   * 以 **管理员身份** 打开终端（PowerShell 或 CMD），进入项目根目录，执行：
+     ```powershell
+     .\mkcert.exe -install
+     ```
+     根据系统安全提示选择 **“是 (Yes)”** 信任本地 CA 根证书。
+
+2. **启动与自动生成证书**：
+   * 执行项目启动脚本（如双击根目录下的 `start_manual.bat` 或 `frontend_start.bat`）。
+   * 启动脚本检测到证书未生成时，会自动调用 `mkcert.exe` 在项目根目录下生成 `localhost+2.pem` 和 `localhost+2-key.pem`。
+   * 前端运行成功后，访问地址将自动升级为 **`https://localhost:5173`** 且被浏览器完全信任。
 
 ---
 
