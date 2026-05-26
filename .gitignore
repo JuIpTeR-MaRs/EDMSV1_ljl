@@ -40,3 +40,7 @@ install/
 .gemini/
 *.log
 .lock
+
+# Local development certificates and tools
+mkcert.exe
+*.pem
