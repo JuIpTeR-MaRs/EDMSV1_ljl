@@ -51,42 +51,47 @@ if %ERRORLEVEL% EQU 0 (
     )
 )
 
-:: Create .env file in bin/ directory if it doesn't exist
-if not exist "%ENV_FILE%" (
-    echo Creating .env file in bin/ directory...
-    copy "%SCRIPT_DIR%.env.example" "%ENV_FILE%" >nul
-    if exist "%ENV_FILE%" (
-        echo [OK] Created .env file
-        
-        :: Auto-generate JWT_SECRET_KEY if empty
-        for /f "tokens=2 delims==" %%a in ('findstr "JWT_SECRET_KEY=" "%ENV_FILE%"') do (
-            set "CURRENT_JWT=%%a"
-        )
-        if "!CURRENT_JWT!"=="" (
-            echo Auto-generating JWT_SECRET_KEY...
-            :: Generate random 32-character hex string
-            set "JWT_KEY="
-            for /l %%i in (1,1,32) do (
-                set /a "rand=!random! %% 16"
-                for %%j in (!rand!) do set "JWT_KEY=!JWT_KEY!0123456789abcdef:~%%j,1"
-            )
-            :: Update .env file with generated key
-            findstr /v "^JWT_SECRET_KEY=" "%ENV_FILE%" > "%ENV_FILE%.tmp"
-            echo JWT_SECRET_KEY=!JWT_KEY! >> "%ENV_FILE%.tmp"
-            move /y "%ENV_FILE%.tmp" "%ENV_FILE%" >nul
-            echo [OK] JWT_SECRET_KEY generated
-        )
-        echo.
-    ) else (
-        echo ERROR: Failed to create .env file
-        echo Source: %SCRIPT_DIR%.env.example
-        echo Destination: %ENV_FILE%
-        pause
-        exit /b 1
-    )
-) else (
-    echo [OK] .env file already exists in bin/ directory
+:: Sync or create .env file in bin/ directory
+if exist "%SCRIPT_DIR%.env" (
+    echo Copying .env file from docker/ directory to bin/...
+    copy /y "%SCRIPT_DIR%.env" "%ENV_FILE%" >nul
+    echo [OK] Synced .env file
     echo.
+) else (
+    if not exist "%ENV_FILE%" (
+        echo Creating .env file in bin/ directory from template...
+        copy "%SCRIPT_DIR%.env.example" "%ENV_FILE%" >nul
+        if exist "%ENV_FILE%" (
+            echo [OK] Created .env file from template
+            
+            :: Auto-generate JWT_SECRET_KEY if empty
+            for /f "tokens=2 delims==" %%a in ('findstr "JWT_SECRET_KEY=" "%ENV_FILE%"') do (
+                set "CURRENT_JWT=%%a"
+            )
+            if "!CURRENT_JWT!"=="" (
+                echo Auto-generating JWT_SECRET_KEY...
+                set "JWT_KEY="
+                for /l %%i in (1,1,32) do (
+                    set /a "rand=!random! %% 16"
+                    for %%j in (!rand!) do set "JWT_KEY=!JWT_KEY!0123456789abcdef:~%%j,1"
+                )
+                findstr /v "^JWT_SECRET_KEY=" "%ENV_FILE%" > "%ENV_FILE%.tmp"
+                echo JWT_SECRET_KEY=!JWT_KEY! >> "%ENV_FILE%.tmp"
+                move /y "%ENV_FILE%.tmp" "%ENV_FILE%" >nul
+                echo [OK] JWT_SECRET_KEY generated
+            )
+            echo.
+        ) else (
+            echo ERROR: Failed to create .env file
+            echo Source: %SCRIPT_DIR%.env.example
+            echo Destination: %ENV_FILE%
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo [OK] .env file already exists in bin/ directory
+        echo.
+    )
 )
 
 :: Create data directory in bin/ directory if it doesn't exist

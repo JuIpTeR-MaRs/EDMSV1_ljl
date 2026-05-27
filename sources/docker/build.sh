@@ -43,26 +43,32 @@ else
     exit 1
 fi
 
-# Create .env file in bin/ directory if it doesn't exist
-if [ ! -f "$ENV_FILE" ]; then
-    echo "Creating .env file in bin/ directory..."
-    cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
-    echo "[OK] Created .env file"
-    
-    # Auto-generate JWT_SECRET_KEY if empty
-    if grep -q "^JWT_SECRET_KEY=$" "$ENV_FILE" || ! grep -q "^JWT_SECRET_KEY=" "$ENV_FILE"; then
-        echo "Auto-generating JWT_SECRET_KEY..."
-        JWT_KEY=$(openssl rand -hex 32)
-        # Update .env file with generated key
-        grep -v "^JWT_SECRET_KEY=" "$ENV_FILE" > "$ENV_FILE.tmp" || true
-        echo "JWT_SECRET_KEY=$JWT_KEY" >> "$ENV_FILE.tmp"
-        mv "$ENV_FILE.tmp" "$ENV_FILE"
-        echo "[OK] JWT_SECRET_KEY generated"
-    fi
+# Sync or create .env file in bin/ directory
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    echo "Copying .env file from docker/ directory to bin/..."
+    cp "$SCRIPT_DIR/.env" "$ENV_FILE"
+    echo "[OK] Synced .env file"
     echo ""
 else
-    echo "[OK] .env file already exists in bin/ directory"
-    echo ""
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "Creating .env file in bin/ directory from template..."
+        cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+        echo "[OK] Created .env file from template"
+        
+        # Auto-generate JWT_SECRET_KEY if empty
+        if grep -q "^JWT_SECRET_KEY=$" "$ENV_FILE" || ! grep -q "^JWT_SECRET_KEY=" "$ENV_FILE"; then
+            echo "Auto-generating JWT_SECRET_KEY..."
+            JWT_KEY=$(openssl rand -hex 32)
+            grep -v "^JWT_SECRET_KEY=" "$ENV_FILE" > "$ENV_FILE.tmp" || true
+            echo "JWT_SECRET_KEY=$JWT_KEY" >> "$ENV_FILE.tmp"
+            mv "$ENV_FILE.tmp" "$ENV_FILE"
+            echo "[OK] JWT_SECRET_KEY generated"
+        fi
+        echo ""
+    else
+        echo "[OK] .env file already exists in bin/ directory"
+        echo ""
+    fi
 fi
 
 # Create data directory in bin/ directory if it doesn't exist
