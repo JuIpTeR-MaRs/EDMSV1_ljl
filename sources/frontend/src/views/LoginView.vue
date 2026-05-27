@@ -106,29 +106,33 @@
                 <p>{{ t('register.submitInfo') }}</p>
               </div>
 
-              <el-form :model="regForm" label-position="top" @submit.prevent="handleRegister">
+              <el-form ref="regFormRef" :model="regForm" :rules="regRules" label-position="top" @submit.prevent="handleRegister">
                 <el-row :gutter="12">
                   <el-col :span="12">
-                    <el-form-item :label="t('register.lastName')" required>
-                      <el-input v-model="regForm.last_name" :prefix-icon="Edit" />
+                    <el-form-item :label="t('register.lastName')" prop="last_name">
+                      <el-input v-model="regForm.last_name" :prefix-icon="Edit" :placeholder="t('register.lastNamePlaceholder')" />
+                      <div class="form-tip">{{ t('register.lastNameTip') }}</div>
                     </el-form-item>
                   </el-col>
                   <el-col :span="12">
-                    <el-form-item :label="t('register.firstName')" required>
-                      <el-input v-model="regForm.first_name" :prefix-icon="Edit" />
+                    <el-form-item :label="t('register.firstName')" prop="first_name">
+                      <el-input v-model="regForm.first_name" :prefix-icon="Edit" :placeholder="t('register.firstNamePlaceholder')" />
+                      <div class="form-tip">{{ t('register.firstNameTip') }}</div>
                     </el-form-item>
                   </el-col>
                 </el-row>
 
-                <el-form-item :label="t('register.loginName')" required>
-                  <el-input v-model="regForm.login_name" :prefix-icon="User" />
+                <el-form-item :label="t('register.loginName')" prop="login_name">
+                  <el-input v-model="regForm.login_name" :prefix-icon="User" :placeholder="t('register.loginNamePlaceholder')" />
+                  <div class="form-tip">{{ t('register.loginNameTip') }}</div>
                 </el-form-item>
 
-                <el-form-item :label="t('register.password')" required>
-                  <el-input v-model="regForm.password" type="password" show-password :prefix-icon="Lock" />
+                <el-form-item :label="t('register.password')" prop="password">
+                  <el-input v-model="regForm.password" type="password" show-password :prefix-icon="Lock" :placeholder="t('register.passwordPlaceholder')" />
+                  <div class="form-tip">{{ t('register.passwordTip') }}</div>
                 </el-form-item>
 
-                <el-form-item :label="t('register.department')" required>
+                <el-form-item :label="t('register.department')" prop="department_id">
                   <el-select v-model="regForm.department_id" style="width: 100%" :placeholder="t('register.placeholder')">
                     <el-option
                       v-for="dept in departments"
@@ -137,6 +141,7 @@
                       :value="dept.id"
                     />
                   </el-select>
+                  <div class="form-tip">{{ t('register.deptTip') }}</div>
                 </el-form-item>
 
                 <el-button type="primary" class="login-btn" :loading="loading" native-type="submit">
@@ -208,6 +213,8 @@ const loading = ref(false);
 const mode = ref('login');
 
 const departments = ref<any[]>([]);
+const regFormRef = ref<any>(null);
+
 const regForm = ref({
   login_name: '',
   password: '',
@@ -215,6 +222,28 @@ const regForm = ref({
   last_name: '',
   department_id: null as number | null
 });
+
+const regRules = computed(() => ({
+  last_name: [
+    { required: true, message: t('register.validation.lastNameRequired'), trigger: 'blur' }
+  ],
+  first_name: [
+    { required: true, message: t('register.validation.firstNameRequired'), trigger: 'blur' }
+  ],
+  login_name: [
+    { required: true, message: t('register.validation.loginNameRequired'), trigger: 'blur' },
+    { min: 3, max: 20, message: t('register.validation.loginNameLength'), trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_]+$/, message: t('register.validation.loginNameFormat'), trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: t('register.validation.passwordRequired'), trigger: 'blur' },
+    { min: 6, max: 20, message: t('register.validation.passwordLength'), trigger: 'blur' },
+    { pattern: /^(?=.*[a-zA-Z])(?=.*\d).{6,20}$/, message: t('register.validation.passwordFormat'), trigger: 'blur' }
+  ],
+  department_id: [
+    { required: true, message: t('register.validation.deptRequired'), trigger: 'change' }
+  ]
+}));
 
 const features = computed(() => [
   {
@@ -268,27 +297,31 @@ async function submit() {
 }
 
 async function handleRegister() {
-  if (!regForm.value.login_name || !regForm.value.password || !regForm.value.department_id) {
-    ElMessage.warning(t('common.requiredFields'));
-    return;
-  }
-  loading.value = true;
-  try {
-    await api.post('/auth/register', regForm.value);
-    await ElMessageBox.alert(
-      t('register.successInfo'),
-      t('common.success'),
-      { 
-        confirmButtonText: t('common.ok'),
-        confirmButtonClass: 'purple-confirm-button'
-      }
-    );
-    mode.value = 'login';
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || t('register.error'));
-  } finally {
-    loading.value = false;
-  }
+  if (!regFormRef.value) return;
+  await regFormRef.value.validate(async (valid: boolean) => {
+    if (!valid) {
+      ElMessage.warning(t('common.requiredFields'));
+      return;
+    }
+    loading.value = true;
+    try {
+      await api.post('/auth/register', regForm.value);
+      await ElMessageBox.alert(
+        t('register.successInfo'),
+        t('common.success'),
+        { 
+          confirmButtonText: t('common.ok'),
+          confirmButtonClass: 'purple-confirm-button'
+        }
+      );
+      mode.value = 'login';
+      regFormRef.value.resetFields();
+    } catch (err: any) {
+      ElMessage.error(err.response?.data?.error || t('register.error'));
+    } finally {
+      loading.value = false;
+    }
+  });
 }
 </script>
 
@@ -712,6 +745,28 @@ async function handleRegister() {
   padding-bottom: 6px;
   font-weight: 600;
   color: #475569;
+}
+
+.form-tip {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+  line-height: 1.4;
+  transition: all 0.3s ease;
+  opacity: 0.85;
+}
+
+.register-section :deep(.el-form-item):focus-within .form-tip {
+  color: #8b5cf6;
+  opacity: 1;
+}
+
+.register-section :deep(.el-form-item.is-error) .form-tip {
+  opacity: 0.5;
+}
+
+.register-section :deep(.el-form-item) {
+  margin-bottom: 22px;
 }
 
 /* Responsive */

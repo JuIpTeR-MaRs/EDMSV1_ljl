@@ -101,6 +101,58 @@ if not exist "%DATA_DIR%" (
     echo.
 )
 
+:: Generate local SSL certificates if needed
+echo Checking for SSL certificates...
+set "ROOT_DIR=%SCRIPT_DIR%..\..\"
+set "CERTS_DIR=%SCRIPT_DIR%certs"
+set "BIN_CERTS_DIR=%BIN_DIR%certs"
+
+mkdir "%CERTS_DIR%" 2>nul
+mkdir "%BIN_CERTS_DIR%" 2>nul
+
+if not exist "%CERTS_DIR%\fullchain.pem" (
+    if exist "%ROOT_DIR%localhost+2.pem" (
+        echo [SSL] Found local development certificates in root, copying them...
+        copy "%ROOT_DIR%localhost+2.pem" "%CERTS_DIR%\fullchain.pem" >nul
+        copy "%ROOT_DIR%localhost+2-key.pem" "%CERTS_DIR%\privkey.pem" >nul
+    ) else (
+        set "MKCERT_PATH="
+        if exist "%ROOT_DIR%mkcert.exe" (
+            set "MKCERT_PATH=%ROOT_DIR%mkcert.exe"
+        ) else (
+            where mkcert >nul 2>nul
+            if %ERRORLEVEL% EQU 0 set "MKCERT_PATH=mkcert"
+        )
+
+        if not "!MKCERT_PATH!"=="" (
+            echo [SSL] Generating local certificates using !MKCERT_PATH!...
+            pushd "%CERTS_DIR%"
+            "!MKCERT_PATH!" localhost 127.0.0.1 ::1
+            if exist "localhost+2.pem" (
+                move /y "localhost+2.pem" "fullchain.pem" >nul
+                move /y "localhost+2-key.pem" "privkey.pem" >nul
+                echo [SSL] Local SSL certificates generated successfully in certs/ directory
+            ) else (
+                echo [SSL] Warning: mkcert ran but did not output expected files
+            )
+            popd
+        ) else (
+            echo [SSL] Warning: mkcert.exe not found. You will need to manually place fullchain.pem and privkey.pem in certs/ directory.
+        )
+    )
+) else (
+    echo [SSL] SSL certificates already exist in certs/ directory
+)
+
+:: Copy certs to bin/certs/ directory for runtime deployment
+if exist "%CERTS_DIR%\fullchain.pem" (
+    echo Copying certificates to bin/certs/ directory...
+    copy "%CERTS_DIR%\fullchain.pem" "%BIN_CERTS_DIR%\fullchain.pem" >nul
+    copy "%CERTS_DIR%\privkey.pem" "%BIN_CERTS_DIR%\privkey.pem" >nul
+    echo [SSL] Certificates copied to bin/certs/ directory
+)
+echo.
+
 :: Build Docker images
 echo Building Docker images...
 echo This may take a while on first run...
@@ -141,6 +193,18 @@ if exist "%BIN_DIR%docker-compose.yml" (
     echo [OK] docker-compose.yml copied to bin/ directory
 ) else (
     echo ERROR: Failed to copy docker-compose.yml
+    pause
+    exit /b 1
+)
+
+:: Copy frontend configuration for SSL to bin/ directory
+echo Copying frontend SSL configuration to bin/ directory...
+mkdir "%BIN_DIR%frontend" 2>nul
+copy "%SCRIPT_DIR%frontend\nginx.ssl.conf" "%BIN_DIR%frontend\nginx.ssl.conf" >nul
+if exist "%BIN_DIR%frontend\nginx.ssl.conf" (
+    echo [OK] Nginx SSL configuration copied to bin/ directory
+) else (
+    echo ERROR: Failed to copy Nginx SSL configuration
     pause
     exit /b 1
 )

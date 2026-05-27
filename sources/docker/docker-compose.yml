@@ -65,12 +65,18 @@ services:
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-80}:80"
+      - "${SSL_PORT:-443}:443"  # SSL port for HTTPS access
+    volumes:
+      # To enable HTTPS, uncomment the lines below to mount the SSL Nginx config and your certificate files
+      # - ./frontend/nginx.ssl.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./certs:/etc/nginx/certs:ro
+      - ./data/frontend:/var/log/nginx
     networks:
       - edms-network
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "http://127.0.0.1/"]
       interval: 30s
       timeout: 10s
       retries: 3
