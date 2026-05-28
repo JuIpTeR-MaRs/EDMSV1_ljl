@@ -75,6 +75,16 @@
             {{ t('admin.addDept', 'Add Department') }}
           </el-button>
           <el-button 
+            v-if="auth.user?.is_super_admin" 
+            type="danger" 
+            :icon="Delete" 
+            :disabled="!filterDept" 
+            @click="handleDeleteDept"
+            :title="!filterDept ? t('admin.deleteDeptWarning') : ''"
+          >
+            {{ t('admin.deleteDept', 'Delete Department') }}
+          </el-button>
+          <el-button 
             type="danger" 
             :icon="Delete" 
             :disabled="selectedIds.length === 0" 
@@ -410,6 +420,24 @@ async function createDept() {
     ElMessage.error(err.response?.data?.error || t('common.failed'));
   } finally {
     deptLoading.value = false;
+  }
+}
+
+async function handleDeleteDept() {
+  if (!filterDept.value) return;
+  try {
+    await ElMessageBox.confirm(
+      t('admin.deleteDeptConfirm'),
+      t('common.warning'),
+      { type: 'warning', confirmButtonClass: 'el-button--danger' }
+    );
+    await api.delete(`/users/departments/${filterDept.value}`);
+    ElMessage.success(t('common.success'));
+    filterDept.value = null;
+    loadDepts();
+    loadUsers();
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || t('common.failed'));
   }
 }
 

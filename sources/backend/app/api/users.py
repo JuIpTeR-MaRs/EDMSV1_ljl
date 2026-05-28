@@ -342,9 +342,11 @@ def batch_delete_users():
                 continue
             
             try:
-                db.session.delete(u)
+                with db.session.begin_nested():
+                    db.session.delete(u)
+                    db.session.flush()
                 deleted_count += 1
-            except Exception:
+            except Exception as e:
                 errors.append(f"User ID {uid} could not be deleted (constraints)")
     
     db.session.commit()
@@ -377,6 +379,26 @@ def create_department():
     db.session.add(dept)
     db.session.commit()
     return jsonify({"id": dept.id, "name": dept.name, "name_en": dept.name_en}), 201
+
+@bp.delete("/departments/<int:dept_id>")
+@jwt_required()
+def delete_department(dept_id: int):
+    admin = current_user()
+    if not admin or not admin.is_super_admin:
+        return jsonify({"error": "Strict admin access required"}), 403
+        
+    dept = db.session.get(Department, dept_id)
+    if not dept:
+        return jsonify({"error": "Department not found"}), 404
+        
+    users_count = User.query.filter_by(department_id=dept.id).count()
+    if users_count > 0:
+        return jsonify({"error": "Cannot delete department because it still has members."}), 400
+        
+    db.session.delete(dept)
+    db.session.commit()
+    return jsonify({"message": "Department deleted successfully"})
+
 
 @bp.post("/<int:user_id>/reset-password")
 @jwt_required()
