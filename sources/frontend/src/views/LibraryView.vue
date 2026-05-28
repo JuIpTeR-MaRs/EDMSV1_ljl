@@ -205,8 +205,22 @@
         </div>
       </div>
 
-      <el-table :data="paginatedItems" v-loading="loading" stripe style="width: 100%" @selection-change="handleSelectionChange">
-        <el-table-column type="selection" width="55" />
+      <el-table :data="paginatedItems" v-loading="loading" stripe style="width: 100%">
+        <el-table-column width="55">
+          <template #header>
+            <el-checkbox 
+              :model-value="isAllSelected" 
+              :indeterminate="isIndeterminate" 
+              @change="handleSelectAll" 
+            />
+          </template>
+          <template #default="{ row }">
+            <el-checkbox 
+              :model-value="selectedSet.has(row.id)" 
+              @change="(val) => handleSelectRow(val, row)" 
+            />
+          </template>
+        </el-table-column>
         <el-table-column prop="doc_number" :label="t('library.colId')" width="140" />
         <el-table-column prop="title" :label="t('library.colTitle')" min-width="180">
           <template #default="{ row }">
@@ -403,6 +417,7 @@ const showMove = ref(false);
 const showCreateSpace = ref(false);
 const showMultiQa = ref(false);
 const editSpaceData = ref<any>(null);
+const selectedSet = ref(new Set<number>());
 
 watch(showCreateSpace, (val) => {
   if (!val) {
@@ -431,9 +446,15 @@ async function batchClearSpace() {
 }
 
 function onMoved() {
-  selectedIds.value = [];
+  clearSelection();
   load();
   loadTree();
+}
+
+function clearSelection() {
+  selectedSet.value.clear();
+  selectedIds.value = [];
+  selectedRows.value = [];
 }
 
 const formatName = (name: string, nameEn?: string, type: 'dept' | 'space' = 'dept') => {
@@ -458,9 +479,38 @@ function toggleToolbar() {
   toolbarCollapsed.value = !toolbarCollapsed.value;
 }
 
-function handleSelectionChange(selection: DocRow[]) {
-  selectedIds.value = selection.map(row => row.id);
-  selectedRows.value = selection;
+const isAllSelected = computed(() => {
+  if (paginatedItems.value.length === 0) return false;
+  return paginatedItems.value.every(row => selectedSet.value.has(row.id));
+});
+
+const isIndeterminate = computed(() => {
+  if (paginatedItems.value.length === 0) return false;
+  const selectedCount = paginatedItems.value.filter(row => selectedSet.value.has(row.id)).length;
+  return selectedCount > 0 && selectedCount < paginatedItems.value.length;
+});
+
+function handleSelectAll(val: boolean) {
+  if (val) {
+    paginatedItems.value.forEach(row => selectedSet.value.add(row.id));
+  } else {
+    paginatedItems.value.forEach(row => selectedSet.value.delete(row.id));
+  }
+  updateSelectedIds();
+}
+
+function handleSelectRow(val: boolean, row: DocRow) {
+  if (val) {
+    selectedSet.value.add(row.id);
+  } else {
+    selectedSet.value.delete(row.id);
+  }
+  updateSelectedIds();
+}
+
+function updateSelectedIds() {
+  selectedIds.value = Array.from(selectedSet.value);
+  selectedRows.value = items.value.filter(i => selectedSet.value.has(i.id));
 }
 
 async function batchDelete() {
@@ -490,8 +540,8 @@ async function batchDelete() {
     } else {
       ElMessage.success(t("common.success"));
     }
+    clearSelection();
     await load();
-    selectedIds.value = [];
   } catch (err: any) {
     if (err !== 'cancel') {
       const msg = err.response?.data?.error || err.message || t("common.failed");
@@ -521,8 +571,8 @@ async function batchShare(isPublic: boolean) {
       is_public: isPublic
     });
     ElMessage.success(t("common.success"));
+    clearSelection();
     await load();
-    selectedIds.value = [];
   } catch {}
 }
 
