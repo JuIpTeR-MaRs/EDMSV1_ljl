@@ -170,6 +170,7 @@ def list_document_tree():
     
     from app.models.space import Space
     from app.models.core import Department
+    from app.models.document import document_spaces
     
     spaces = Space.query.all()
     depts = Department.query.all()
@@ -178,7 +179,6 @@ def list_document_tree():
     
     # 1. Spaces (Project/Topic Groups)
     for s in spaces:
-        from app.models.document import document_spaces
         docs = db.session.query(Document).join(document_spaces).filter(
             document_spaces.c.space_id == s.id,
             Document.is_template == False,
