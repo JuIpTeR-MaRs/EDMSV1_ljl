@@ -403,7 +403,7 @@
         </el-table>
       </div>
     </el-dialog>
-    <el-row :gutter="20" class="chart-row" style="margin-top: 20px;" v-if="!loading">
+    <el-row :gutter="20" class="chart-row" style="margin-top: 20px;" v-if="!loading && isAdmin">
       <el-col :span="14">
         <el-card shadow="hover" class="chart-card blockchain-card">
           <template #header>
@@ -461,7 +461,7 @@
       </el-col>
     </el-row>
 
-    <el-row class="feed-row" style="margin-top: 20px;">
+    <el-row class="feed-row" style="margin-top: 20px;" v-if="isAdmin">
       <el-col :span="24">
         <el-card shadow="hover" class="chart-card">
           <template #header>

@@ -47,3 +47,7 @@ mkcert.exe
 
 # Environments and secrets
 *.env
+
+# Model caches and specific mkcert binary
+sources/fastembed_cache/
+mkcert-v1.4.4-windows-amd64.exe

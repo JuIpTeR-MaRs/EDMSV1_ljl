@@ -19,12 +19,6 @@
             {{ doc.doc_number || ('ID: ' + doc.id) }}
           </el-tag>
         </div>
-        <div class="model-selector">
-          <span class="label">{{ t('library.useModel') }}：</span>
-          <el-select v-model="aiStore.selectedModel" size="small" style="width: 130px">
-            <el-option label="DeepSeek Chat" value="deepseek" />
-          </el-select>
-        </div>
       </div>
 
       <div class="chat-area" ref="chatArea">
@@ -199,11 +193,6 @@ async function askQuestion() {
   align-items: center;
   flex: 1;
   overflow: hidden;
-}
-.model-selector {
-  display: flex;
-  align-items: center;
-  margin-left: 16px;
 }
 .label {
   font-size: 13px;
