@@ -37,11 +37,109 @@ from app.services.ai_service import AIService
 from app.services.vector_store import upsert_document
 from app.utils.auth import current_user
 from app.utils.audit import audit_log_required
-from app.utils.background import run_in_background
+from app.utils.background import run_in_background, submit_async_task
 
 from app.utils.text import extract_text_from_tiptap
 
 bp = Blueprint("documents", __name__)
+
+@bp.get("/tasks/<task_id>")
+@jwt_required()
+def check_task_status(task_id: str):
+    from app.utils.background import get_task_status
+    status = get_task_status(task_id)
+    if not status:
+        return jsonify({"error": "Task not found"}), 404
+    return jsonify(status)
+
+def _async_parse_and_vectorize_pdf(task_id: str, app, doc_id: int, file_path: str):
+    from app.utils.background import update_task
+    import os
+    import time
+    
+    update_task(task_id, progress=10, message="Extracting text from PDF...")
+    
+    with app.app_context():
+        doc = Document.get_by_id_or_number(doc_id)
+        if not doc:
+            update_task(task_id, progress=100, status="failed", message="Document not found", error="Document not found")
+            db.session.remove()
+            return
+            
+        doc_title = doc.title
+        
+        # 1. Extract text using pypdf
+        text_content = ""
+        try:
+            if os.path.exists(file_path):
+                from pypdf import PdfReader
+                reader = PdfReader(file_path)
+                pages_text = []
+                num_pages = len(reader.pages)
+                for idx, page in enumerate(reader.pages):
+                    t = page.extract_text()
+                    if t:
+                        pages_text.append(t)
+                    # Update progress during extraction (10% to 50%)
+                    current_progress = 10 + int((idx + 1) / num_pages * 40)
+                    update_task(task_id, progress=current_progress, message=f"Extracting page {idx+1}/{num_pages}...")
+                text_content = "\n".join(pages_text)
+            else:
+                text_content = doc_title
+        except Exception as e:
+            print(f"[Background Task] PDF text extraction error: {e}")
+            text_content = doc_title
+            
+        if not text_content:
+            text_content = doc_title
+            
+        # Release DB session before slower RAG operations
+        db.session.remove()
+        
+        # 2. Vector DB Upsert
+        update_task(task_id, progress=60, message="Generating document vectors...")
+        try:
+            from app.services.vector_store import upsert_document
+            upsert_document(doc_id, doc_title, text_content)
+        except Exception as e:
+            print(f"[Background Task] Vector DB upsert error: {e}")
+            
+        # 3. AI Metadata
+        update_task(task_id, progress=80, message="Generating AI summary and tags...")
+        try:
+            from app.services.ai_service import AIService
+            meta = AIService.generate_metadata(text_content)
+            
+            # Re-fetch document and save metadata
+            doc_update = Document.get_by_id_or_number(doc_id)
+            if doc_update:
+                doc_update.summary = meta.get("summary", "")
+                doc_update.tags = meta.get("tags", "")
+                doc_update.category = meta.get("category", "")
+                db.session.commit()
+        except Exception as e:
+            print(f"[Background Task] AI Metadata generation error: {e}")
+            
+        db.session.remove()
+        update_task(task_id, progress=100, status="completed", message="Successfully processed document", result={"document_id": doc_id})
+
+def _async_generate_diff_task(task_id: str, content_a: str, content_b: str, mode: str):
+    from app.utils.background import update_task
+    from app.services.diff_service import side_by_side_diff, diff_html
+    
+    update_task(task_id, progress=30, message="Calculating differences...")
+    try:
+        if mode == "side_by_side":
+            html_data = side_by_side_diff(content_a, content_b)
+        else:
+            html_data = diff_html(content_a, content_b)
+            
+        update_task(task_id, progress=100, status="completed", message="Comparison complete", result={"html": html_data})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        update_task(task_id, progress=100, status="failed", message=f"Diff generation failed: {str(e)}", error=str(e))
+
 
 # Cooldown tracker: doc_id -> last update epoch time
 # Prevents AI metadata from being triggered on every autosave (every 2s)
@@ -439,52 +537,67 @@ def create_document():
     title = (data.get("title") or "Untitled").strip()[:512]
     space_id = data.get("space_id")
     
-    # Generate doc_number (resets daily)
+    from sqlalchemy.exc import IntegrityError
     from sqlalchemy import func
-    # 使用本地时间而非 UTC，确保编号符合用户直觉日期
-    today_str = datetime.now().strftime("%Y%m%d")
-    # 查找当天最高编号以确保跨天重置且不因删除导致编号冲突
-    max_doc = db.session.query(func.max(Document.doc_number)).filter(
-        Document.doc_number.like(f"{today_str}%")
-    ).scalar()
-    if max_doc:
-        try:
-            last_seq = int(max_doc[-3:])
-            doc_number = f"{today_str}{str(last_seq + 1).zfill(3)}"
-        except:
-            doc_number = f"{today_str}001"
-    else:
-        doc_number = f"{today_str}001"
+    import random
+    import time
     
-    try:
-        doc = Document(owner_id=user.id, title=title, status="draft", doc_number=doc_number)
-        if space_id:
-            from app.models.space import Space
-            sp = db.session.get(Space, space_id)
-            if sp:
-                doc.spaces.append(sp)
-                
-        db.session.add(doc)
-        db.session.flush()
-        ver = DocumentVersion(
-            document_id=doc.id,
-            version_no=1,
-            content_json=DocumentVersion.default_content_json(),
-            created_by_id=user.id,
-        )
-        db.session.add(ver)
-        db.session.flush()
-        doc.current_version_id = ver.id
-        db.session.commit()
-        
-        # Trigger background updates
-        from flask import current_app
-        app_obj = current_app._get_current_object()
-        run_in_background(_trigger_metadata_update, app_obj, doc.id)
-    except Exception as e:
+    doc = None
+    for attempt in range(10):
         db.session.rollback()
-        return jsonify({"error": f"Failed to create document: {str(e)}"}), 500
-        
+        today_str = datetime.now().strftime("%Y%m%d")
+        max_doc = db.session.query(func.max(Document.doc_number)).filter(
+            Document.doc_number.like(f"{today_str}%")
+        ).scalar()
+        if max_doc:
+            try:
+                last_seq = int(max_doc[8:])
+                doc_number = f"{today_str}{str(last_seq + 1).zfill(3)}"
+            except:
+                doc_number = f"{today_str}001"
+        else:
+            doc_number = f"{today_str}001"
+            
+        try:
+            doc = Document()
+            doc.owner_id = user.id
+            doc.title = title
+            doc.status = "draft"
+            doc.doc_number = doc_number
+            if space_id:
+                from app.models.space import Space
+                sp = db.session.get(Space, space_id)
+                if sp:
+                    doc.spaces.append(sp)
+                    
+            db.session.add(doc)
+            db.session.flush()
+            
+            ver = DocumentVersion()
+            ver.document_id = doc.id
+            ver.version_no = 1
+            ver.content_json = DocumentVersion.default_content_json()
+            ver.created_by_id = user.id
+            db.session.add(ver)
+            db.session.flush()
+            doc.current_version_id = ver.id
+            
+            db.session.commit()
+            break
+        except IntegrityError:
+            db.session.rollback()
+            if attempt == 9:
+                return jsonify({"error": "Failed to generate a unique document number due to high concurrency"}), 500
+            time.sleep(random.uniform(0.01, 0.05))
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": f"Failed to create document: {str(e)}"}), 500
+            
+    # Trigger background updates
+    from flask import current_app
+    app_obj = current_app._get_current_object()
+    run_in_background(_trigger_metadata_update, app_obj, doc.id)
+    
     return jsonify(_doc_to_summary(doc, user)), 201
 
 
@@ -519,44 +632,74 @@ def import_pdf():
     # Relative URL for frontend
     relative_path = f"/static/uploads/pdfs/{filename}"
     
-    # Generate doc_number
+    from sqlalchemy.exc import IntegrityError
     from sqlalchemy import func
-    today_str = datetime.now().strftime("%Y%m%d")
-    max_doc = db.session.query(func.max(Document.doc_number)).filter(
-        Document.doc_number.like(f"{today_str}%")
-    ).scalar()
-    if max_doc:
-        try:
-            last_seq = int(max_doc[-3:])
-            doc_number = f"{today_str}{str(last_seq + 1).zfill(3)}"
-        except:
+    import random
+    import time
+    
+    doc = None
+    for attempt in range(10):
+        db.session.rollback()
+        today_str = datetime.now().strftime("%Y%m%d")
+        max_doc = db.session.query(func.max(Document.doc_number)).filter(
+            Document.doc_number.like(f"{today_str}%")
+        ).scalar()
+        if max_doc:
+            try:
+                last_seq = int(max_doc[8:])
+                doc_number = f"{today_str}{str(last_seq + 1).zfill(3)}"
+            except:
+                doc_number = f"{today_str}001"
+        else:
             doc_number = f"{today_str}001"
-    else:
-        doc_number = f"{today_str}001"
-        
-    doc = Document(
-        owner_id=user.id, 
-        title=title, 
-        status="draft", 
-        doc_number=doc_number, 
-        space_id=space_id if space_id and space_id != "unassigned" else None,
-        doc_type="pdf"
+            
+        try:
+            doc = Document()
+            doc.owner_id = user.id
+            doc.title = title
+            doc.status = "draft"
+            doc.doc_number = doc_number
+            doc.space_id = space_id if space_id and space_id != "unassigned" else None
+            doc.doc_type = "pdf"
+            db.session.add(doc)
+            db.session.flush()
+            
+            ver = DocumentVersion()
+            ver.document_id = doc.id
+            ver.version_no = 1
+            ver.file_path = relative_path
+            ver.created_by_id = user.id
+            db.session.add(ver)
+            db.session.flush()
+            doc.current_version_id = ver.id
+            
+            db.session.commit()
+            break
+        except IntegrityError:
+            db.session.rollback()
+            if attempt == 9:
+                return jsonify({"error": "Failed to generate a unique document number due to high concurrency"}), 500
+            time.sleep(random.uniform(0.01, 0.05))
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 500
+            
+    # Trigger background updates
+    from flask import current_app
+    app_obj = current_app._get_current_object()
+    task_id = submit_async_task(
+        "import_pdf",
+        _async_parse_and_vectorize_pdf,
+        app_obj,
+        doc.id,
+        dest_path
     )
-    db.session.add(doc)
-    db.session.flush()
     
-    ver = DocumentVersion(
-        document_id=doc.id,
-        version_no=1,
-        file_path=relative_path,
-        created_by_id=user.id,
-    )
-    db.session.add(ver)
-    db.session.flush()
-    doc.current_version_id = ver.id
-    db.session.commit()
-    
-    return jsonify(_doc_to_summary(doc, user)), 201
+    return jsonify({
+        **_doc_to_summary(doc, user),
+        "task_id": task_id
+    }), 201
+
 
 
 @bp.get("/<doc_id>")
@@ -640,14 +783,13 @@ def put_content(doc_id):
     # Create new version if user changed OR 5+ minutes passed since last version creation
     time_passed = (datetime.utcnow() - ver.created_at) > timedelta(minutes=5)
     if (ver.created_by_id != user.id) or time_passed:
-        new_ver = DocumentVersion(
-            document_id=doc.id,
-            version_no=ver.version_no + 1,
-            parent_version_id=ver.id,
-            created_by_id=user.id,
-            content_json=ver.content_json,
-            yjs_state=ver.yjs_state,
-        )
+        new_ver = DocumentVersion()
+        new_ver.document_id = doc.id
+        new_ver.version_no = ver.version_no + 1
+        new_ver.parent_version_id = ver.id
+        new_ver.created_by_id = user.id
+        new_ver.content_json = ver.content_json
+        new_ver.yjs_state = ver.yjs_state
         db.session.add(new_ver)
         db.session.flush()
         doc.current_version_id = new_ver.id
@@ -723,13 +865,12 @@ def delete_document(doc_id):
     )
 
     # 5. Record the deletion in Audit Log
-    delete_log = AuditLog(
-        user_id=user.id,
-        action='DELETE',
-        document_id=doc.id,
-        ip_address=request.remote_addr,
-        summary=f"Deleted document: {doc.title} ({doc.doc_number})"
-    )
+    delete_log = AuditLog()
+    delete_log.user_id = user.id
+    delete_log.action = 'DELETE'
+    delete_log.document_id = doc.id
+    delete_log.ip_address = request.remote_addr
+    delete_log.summary = f"Deleted document: {doc.title} ({doc.doc_number})"
     db.session.add(delete_log)
 
     db.session.delete(doc)
@@ -800,11 +941,16 @@ def get_diff(doc_id):
     if not a or not b or a.document_id != doc.id or b.document_id != doc.id:
         return jsonify({"error": "Invalid versions"}), 400
     mode = request.args.get("mode", "inline")
-    if mode == "side_by_side":
-        html_data = side_by_side_diff(a.content_json or "{}", b.content_json or "{}")
-    else:
-        html_data = diff_html(a.content_json or "{}", b.content_json or "{}")
-    return jsonify({"html": html_data})
+    
+    # Submit diff generation as a background task
+    task_id = submit_async_task(
+        "generate_diff",
+        _async_generate_diff_task,
+        a.content_json or "{}",
+        b.content_json or "{}",
+        mode
+    )
+    return jsonify({"task_id": task_id}), 202
 
 
 @bp.get("/<doc_id>/blame")
@@ -876,9 +1022,11 @@ def set_permissions(doc_id):
         seen.add(uid_int)
         if not db.session.get(User, uid_int):
             return jsonify({"error": f"Unknown user_id: {uid_int}"}), 400
-        db.session.add(
-            DocumentPermission(document_id=doc.id, user_id=uid_int, role=role),
-        )
+        perm = DocumentPermission()
+        perm.document_id = doc.id
+        perm.user_id = uid_int
+        perm.role = role
+        db.session.add(perm)
 
         # 💡 处理个人通知逻辑
         should_notify = (role == "edit") or (data.get("notify") is True)
@@ -897,15 +1045,14 @@ def set_permissions(doc_id):
             if not existing:
                 title = f"待编辑: {doc.title}" if role == "edit" else f"共享文档: {doc.title}"
                 expires = datetime.utcnow() + timedelta(days=30)
-                new_notif = Notification(
-                    user_id=uid_int,
-                    type="协作",
-                    title=title,
-                    content=f"用户 {user.display_name()} 为您分配了文档的 {role} 权限。",
-                    related_doc_id=doc.id,
-                    link_url=f"/doc/{doc.id}",
-                    expires_at=expires
-                )
+                new_notif = Notification()
+                new_notif.user_id = uid_int
+                new_notif.type = "协作"
+                new_notif.title = title
+                new_notif.content = f"用户 {user.display_name()} 为您分配了文档的 {role} 权限。"
+                new_notif.related_doc_id = doc.id
+                new_notif.link_url = f"/doc/{doc.id}"
+                new_notif.expires_at = expires
                 db.session.add(new_notif)
 
     # 💡 处理“共享给所有人”的通知逻辑
@@ -929,15 +1076,14 @@ def set_permissions(doc_id):
             ).first()
             
             if not existing:
-                new_notif = Notification(
-                    user_id=u.id,
-                    type="协作",
-                    title=f"全员共享: {doc.title}",
-                    content=f"用户 {user.display_name()} 已将文档共享给所有人。",
-                    related_doc_id=doc.id,
-                    link_url=f"/doc/{doc.id}",
-                    expires_at=expires
-                )
+                new_notif = Notification()
+                new_notif.user_id = u.id
+                new_notif.type = "协作"
+                new_notif.title = f"全员共享: {doc.title}"
+                new_notif.content = f"用户 {user.display_name()} 已将文档共享给所有人。"
+                new_notif.related_doc_id = doc.id
+                new_notif.link_url = f"/doc/{doc.id}"
+                new_notif.expires_at = expires
                 db.session.add(new_notif)
 
     print(f"[DEBUG] Committing permissions for doc {doc.id}")
@@ -1138,14 +1284,13 @@ def start_approval(doc_id):
         # 2. 发送通知给审批人
         sender_name = user.display_name()
         for aud in approvers:
-            n = Notification(
-                user_id=aud,
-                type="审批",
-                title=f"待审批: {doc.title}",
-                content=f"用户 {sender_name} 邀请您审批文档 '{doc.title}'。",
-                related_doc_id=doc_id,
-                link_url=f"/inbox"
-            )
+            n = Notification()
+            n.user_id = aud
+            n.type = "审批"
+            n.title = f"待审批: {doc.title}"
+            n.content = f"用户 {sender_name} 邀请您审批文档 '{doc.title}'。"
+            n.related_doc_id = doc_id
+            n.link_url = f"/inbox"
             db.session.add(n)
         
         db.session.commit()
@@ -1153,14 +1298,15 @@ def start_approval(doc_id):
 
         # 3. 实时通知前端（💡 关键修复：扔进后台任务，绝不阻塞当前请求）
         socketio.start_background_task(
-            socketio.emit,
-            "status_change",
-            {
-                "document_id": doc_id,
-                "status": doc.status,
-                "can_edit": False
-            },
-            room=f"doc_{doc_id}"
+            lambda: socketio.emit(
+                "status_change",
+                {
+                    "document_id": doc_id,
+                    "status": doc.status,
+                    "can_edit": False
+                },
+                room=f"doc_{doc_id}"
+            )
         )
         
         return jsonify({
@@ -1196,14 +1342,15 @@ def recall_document_approval(doc_id):
     # 💡 使用后台任务发送实时状态通知，不阻塞响应
     from app.extensions import socketio
     socketio.start_background_task(
-        socketio.emit,
-        "status_change",
-        {
-            "document_id": doc.id,
-            "status": doc.status,
-            "can_edit": True
-        },
-        room=f"doc_{doc.id}"
+        lambda: socketio.emit(
+            "status_change",
+            {
+                "document_id": doc.id,
+                "status": doc.status,
+                "can_edit": True
+            },
+            room=f"doc_{doc.id}"
+        )
     )
 
     return jsonify({"ok": True, "document_status": doc.status})
@@ -1223,14 +1370,13 @@ def new_version_after_reject(doc_id):
         return jsonify({"error": "Only rejected documents"}), 400
     old = doc.current_version
     max_no = max((v.version_no for v in doc.versions), default=0)
-    ver = DocumentVersion(
-        document_id=doc.id,
-        version_no=max_no + 1,
-        content_json=old.content_json if old else DocumentVersion.default_content_json(),
-        yjs_state=old.yjs_state if old else None,
-        created_by_id=user.id,
-        parent_version_id=old.id if old else None,
-    )
+    ver = DocumentVersion()
+    ver.document_id = doc.id
+    ver.version_no = max_no + 1
+    ver.content_json = old.content_json if old else DocumentVersion.default_content_json()
+    ver.yjs_state = old.yjs_state if old else None
+    ver.created_by_id = user.id
+    ver.parent_version_id = old.id if old else None
     db.session.add(ver)
     db.session.flush()
     doc.current_version_id = ver.id
@@ -1310,13 +1456,12 @@ def batch_delete_documents():
         # Step 3: Delete documents and log them
         for doc in valid_docs:
             # Record deletion in audit log
-            delete_log = AuditLog(
-                user_id=user.id,
-                action='DELETE',
-                document_id=doc.id,
-                ip_address=request.remote_addr,
-                summary=f"Batch deleted document: {doc.title} ({doc.doc_number})"
-            )
+            delete_log = AuditLog()
+            delete_log.user_id = user.id
+            delete_log.action = 'DELETE'
+            delete_log.document_id = doc.id
+            delete_log.ip_address = request.remote_addr
+            delete_log.summary = f"Batch deleted document: {doc.title} ({doc.doc_number})"
             db.session.add(delete_log)
             
             db.session.delete(doc)
@@ -1419,14 +1564,13 @@ def verify_document(doc_id):
         # 检查是否已经针对该文档记录过拦截（防止连续点击导致次数虚高）
         exists = AuditLog.query.filter_by(document_id=doc.id, action='INTRUSION_ALERT').first()
         if not exists:
-            tamper_log = AuditLog(
-                user_id=user.id if user else None,
-                document_id=doc.id,             
-                action='INTRUSION_ALERT',          
-                ip_address=request.remote_addr, 
-                summary='【零信任拦截】用户发起确权审计，系统比对发现底层物理数据已被未知来源非法篡改，已阻断！',
-                is_starred=True
-            )
+            tamper_log = AuditLog()
+            tamper_log.user_id = user.id if user else None
+            tamper_log.document_id = doc.id
+            tamper_log.action = 'INTRUSION_ALERT'
+            tamper_log.ip_address = request.remote_addr
+            tamper_log.summary = '【零信任拦截】用户发起确权审计，系统比对发现底层物理数据已被未知来源非法篡改，已阻断！'
+            tamper_log.is_starred = True
             db.session.add(tamper_log)
             db.session.commit()
         # ===============================================

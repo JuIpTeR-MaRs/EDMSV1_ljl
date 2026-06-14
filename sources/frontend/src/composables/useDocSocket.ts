@@ -58,10 +58,58 @@ export function attachDocCollab(
   socket.on("awareness_update", onAwarenessUpdate);
   socket.on("status_change", onStatusChange);
 
-  // 3. 绑定 Yjs/Awareness 本地监听
+  // 3. 绑定 Yjs/Awareness 本地监听并实现防抖批量合并（用于削减高频 AI 生成流量）
+  let updateBuffer: Uint8Array[] = [];
+  let flushTimeout: number | null = null;
+  let lastUpdateTime = 0;
+  let isBatching = false;
+
+  const flushBuffer = () => {
+    if (flushTimeout) {
+      clearTimeout(flushTimeout);
+      flushTimeout = null;
+    }
+    if (updateBuffer.length === 0) {
+      isBatching = false;
+      return;
+    }
+    
+    try {
+      const merged = Y.mergeUpdates(updateBuffer);
+      socket.emit("yjs_update", { document_id: roomId, payload: toB64(merged) });
+    } catch (e) {
+      console.error("[useDocSocket] Failed to merge updates:", e);
+      // Fallback: send individual updates if merge fails
+      for (const upd of updateBuffer) {
+        socket.emit("yjs_update", { document_id: roomId, payload: toB64(upd) });
+      }
+    } finally {
+      updateBuffer = [];
+      isBatching = false;
+    }
+  };
+
   const onDocUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === "remote") return;
-    socket.emit("yjs_update", { document_id: roomId, payload: toB64(update) });
+    
+    const now = Date.now();
+    const timeDiff = now - lastUpdateTime;
+    lastUpdateTime = now;
+
+    // Detect high-frequency inputs (interval < 150ms)
+    if (timeDiff < 150 || isBatching) {
+      isBatching = true;
+      updateBuffer.push(update);
+      
+      if (!flushTimeout) {
+        flushTimeout = window.setTimeout(() => {
+          flushBuffer();
+        }, 500);
+      }
+    } else {
+      // Normal human typing speed: send immediately
+      socket.emit("yjs_update", { document_id: roomId, payload: toB64(update) });
+    }
   };
   ydoc.on("update", onDocUpdate);
 
@@ -82,6 +130,7 @@ export function attachDocCollab(
 
   // 5. 极简注销逻辑
   return () => {
+    flushBuffer(); // Flush any pending updates
     // 停止所有监听
     ydoc.off("update", onDocUpdate);
     awareness.off("update", onLocalAwareUpdate);

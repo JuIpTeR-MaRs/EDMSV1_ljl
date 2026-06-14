@@ -820,6 +820,27 @@ function onImportPdf(file: UploadRawFile) {
   return false;
 }
 
+async function pollTaskProgress(taskId: string, onProgress: (progress: number, message: string) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const checkStatus = async () => {
+      try {
+        const { data } = await api.get(`/documents/tasks/${taskId}`);
+        onProgress(data.progress || 0, data.message || "Processing...");
+        if (data.status === "completed") {
+          resolve();
+        } else if (data.status === "failed") {
+          reject(new Error(data.error || "Task failed"));
+        } else {
+          setTimeout(checkStatus, 1000);
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+    checkStatus();
+  });
+}
+
 async function doImportPdf(file: UploadRawFile) {
   try {
     const formData = new FormData();
@@ -829,11 +850,28 @@ async function doImportPdf(file: UploadRawFile) {
     }
 
     loading.value = true;
-    await api.post("/documents/import-pdf", formData, {
+    const { data } = await api.post("/documents/import-pdf", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     
-    ElMessage.success(t("library.importPdfSuccess"));
+    if (data.task_id) {
+      const loadingInstance = ElLoading.service({
+        lock: true,
+        text: `Importing PDF... (0%)`,
+        background: 'rgba(0, 0, 0, 0.7)',
+      });
+      try {
+        await pollTaskProgress(data.task_id, (progress, message) => {
+          loadingInstance.setText(`${message} (${progress}%)`);
+        });
+        ElMessage.success(t("library.importPdfSuccess"));
+      } finally {
+        loadingInstance.close();
+      }
+    } else {
+      ElMessage.success(t("library.importPdfSuccess"));
+    }
+    
     await load();
   } catch (err) {
     console.error("Import PDF error:", err);

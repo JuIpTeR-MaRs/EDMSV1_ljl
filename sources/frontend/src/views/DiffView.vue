@@ -108,6 +108,27 @@ async function loadBlame() {
   }
 }
 
+async function pollTask(taskId: string, onSuccess: (result: any) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const checkStatus = async () => {
+      try {
+        const { data } = await api.get(`/documents/tasks/${taskId}`);
+        if (data.status === "completed") {
+          onSuccess(data.result);
+          resolve();
+        } else if (data.status === "failed") {
+          reject(new Error(data.error || "Task failed"));
+        } else {
+          setTimeout(checkStatus, 1000);
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+    checkStatus();
+  });
+}
+
 async function loadDiff() {
   if (!fromId.value || !toId.value) return;
   loading.value = true;
@@ -115,7 +136,17 @@ async function loadDiff() {
     const { data } = await api.get(`/documents/${id}/diff`, {
       params: { from: fromId.value, to: toId.value, mode: diffMode.value },
     });
-    html.value = data.html;
+    
+    if (data.task_id) {
+      await pollTask(data.task_id, (result) => {
+        html.value = result.html;
+      });
+    } else {
+      html.value = data.html;
+    }
+  } catch (err: any) {
+    console.error("Diff failed:", err);
+    ElMessage.error(t("common.failed", "Failed to load differences"));
   } finally {
     loading.value = false;
   }
