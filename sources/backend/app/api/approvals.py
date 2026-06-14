@@ -175,14 +175,13 @@ def decide(participant_id: int):
             # 不通知合规审计（如果有）、不通知自己（当前审批完结人）
             if mid == user.id: continue
             
-            n = Notification(
-                user_id=mid,
-                type="系统",
-                title=f"文档已批准: {doc.title}",
-                content=f"您参与的文档 '{doc.title}' 已经通过审批。",
-                related_doc_id=doc.id,
-                link_url=f"/doc/{doc.id}"
-            )
+            n = Notification()
+            n.user_id = mid
+            n.type = "系统"
+            n.title = f"文档已批准: {doc.title}"
+            n.content = f"您参与的文档 '{doc.title}' 已经通过审批。"
+            n.related_doc_id = doc.id
+            n.link_url = f"/doc/{doc.id}"
             db.session.add(n)
         db.session.commit()
 
@@ -192,7 +191,8 @@ def decide(participant_id: int):
             "document_id": doc.id,
             "status": doc.status,
             "can_edit": (doc.status in ("draft", "approved"))
-        }, room=f"doc_{doc.id}")
+        }, to=f"doc_{doc.id}")
+
 
     return jsonify({"ok": True, "document_status": doc.status if doc else "N/A"})
 
@@ -276,7 +276,7 @@ def recall():
             "document_id": doc.id,
             "status": doc.status,
             "can_edit": True
-        }, room=f"doc_{doc.id}")
+        }, to=f"doc_{doc.id}")
         
         return jsonify({"ok": True, "status": doc.status})
     except Exception as e:

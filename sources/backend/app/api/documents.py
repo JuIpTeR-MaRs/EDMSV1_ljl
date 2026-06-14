@@ -1305,7 +1305,7 @@ def start_approval(doc_id):
                     "status": doc.status,
                     "can_edit": False
                 },
-                room=f"doc_{doc_id}"
+                to=f"doc_{doc_id}"
             )
         )
         
@@ -1349,7 +1349,7 @@ def recall_document_approval(doc_id):
                 "status": doc.status,
                 "can_edit": True
             },
-            room=f"doc_{doc.id}"
+            to=f"doc_{doc.id}"
         )
     )
 
