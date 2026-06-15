@@ -44,27 +44,42 @@ python wsgi.py
 ```
 后端 API 默认运行在 `http://127.0.0.1:5000`
 
-环境变量（可选）：
+### 3. 环境配置
+
+所有子模块（前端、后端、Docker 部署）均统一从项目根目录下的 `.env` 文件读取环境变量。
+
+1. 在项目根目录下，复制环境变量模板：
+   ```bash
+   cp .env.example .env
+   ```
+2. 编辑根目录下的 `.env` 文件以配置相关参数（如数据库凭据、AI 模型 API 密钥等）：
 
 | 变量 | 说明 |
 |----------|-------------|
-| `DATABASE_URL` | SQLAlchemy URL（例如 `mysql+pymysql://...`） |
+| `DATABASE_URL` | 本地手动运行的 SQLAlchemy URL（例如 `mysql+pymysql://...`） |
+| `DOCKER_DATABASE_URL` | Docker 部署的 SQLAlchemy URL（使用容器名 `db` 进行网络通信） |
 | `JWT_SECRET_KEY` | JWT 签名密钥 |
 | `SECRET_KEY` | Flask 密钥 |
-| `ADMIN_IMPORT_TOKEN` | 如果设置，客户端在主数据导入时必须发送 `X-Admin-Token` |
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 |
+| `SPARK_APPID` / `SPARK_API_KEY` / `SPARK_API_SECRET` | 科大讯飞星火大模型配置 |
 
 ## 🐳 Docker 容器化部署
 系统内置了完整的 Docker 支持，可一键部署：
 
 ```bash
-# 进入 docker 目录
-cd sources/docker
+# 在项目根目录下，运行构建脚本（构建脚本会自动将根目录的 .env 文件同步至 bin/ 和 docker/ 运行目录）
+# Windows
+.\sources\docker\build.bat
+# Linux/Mac
+./sources/docker/build.sh
 
-# 复制环境变量模板
-cp .env.example .env
-
-# 一键构建并启动 (或者运行 build.sh / build.bat)
-docker-compose up -d --build
+# 启动服务容器（使用 bin 目录下的管理脚本）
+# Windows:
+cd sources/bin/Windows/
+.\start.bat
+# Linux:
+cd sources/bin/Linux/
+./start.sh
 ```
 部署完成后，可通过 Nginx 代理的地址直接访问系统。
 

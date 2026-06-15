@@ -44,27 +44,42 @@ python wsgi.py
 ```
 Backend API runs at `http://127.0.0.1:5000` by default.
 
-Environment variables (optional):
+### 3. Environment Configuration
+
+All modules (frontend, backend, docker deployment) read environment variables from a single unified `.env` file at the root of the repository.
+
+1. Copy the environment template in the root directory:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` to configure your credentials (e.g. database credentials, AI model API keys):
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | SQLAlchemy URL (e.g. `mysql+pymysql://...`) |
+| `DATABASE_URL` | SQLAlchemy URL for local manual run (e.g., `mysql+pymysql://...`) |
+| `DOCKER_DATABASE_URL` | SQLAlchemy URL for Docker deployment (e.g., `mysql+pymysql://...@db:3306/...`) |
 | `JWT_SECRET_KEY` | JWT signing secret |
 | `SECRET_KEY` | Flask secret |
-| `ADMIN_IMPORT_TOKEN` | If set, clients must send `X-Admin-Token` on master data import |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key |
+| `SPARK_APPID` / `SPARK_API_KEY` / `SPARK_API_SECRET` | Spark AI Config |
 
 ## 🐳 Docker Deployment
 The system includes full Docker support for one-click deployment:
 
 ```bash
-# Enter docker directory
-cd sources/docker
+# In project root, run build script (which automatically copies root .env to bin/ and docker/ directories)
+# Windows
+.\sources\docker\build.bat
+# Linux/Mac
+./sources/docker/build.sh
 
-# Copy environment template
-cp .env.example .env
-
-# Build and start (or run build.sh / build.bat)
-docker-compose up -d --build
+# Start containers (using docker-compose in bin/ directory)
+# Windows:
+cd sources/bin/Windows/
+.\start.bat
+# Or Linux:
+cd sources/bin/Linux/
+./start.sh
 ```
 Access the system via the Nginx proxy address after deployment.
 
