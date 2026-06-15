@@ -225,6 +225,7 @@ class AIService:
                 "translate_zh": "Please translate the following text into Chinese:",
                 "translate_ru": "Please translate the following text into Russian:",
                 "auto_tag": "Please extract 3-5 keywords from the following text as tags, separated by commas. Return ONLY the comma-separated tags:",
+                "proofread_contract": "You are a professional legal and contract proofreading assistant. Please review the following contract text for legal compliance, risks, and accuracy. List any issues and suggestions clearly:",
             }
         else:
             prompts = {
@@ -236,6 +237,7 @@ class AIService:
                 "translate_zh": "请将以下文字翻译成中文：",
                 "translate_ru": "请将以下文字翻译成俄文：",
                 "auto_tag": "请从以下文字中提取3-5个关键词作为标签，以逗号分隔。仅返回逗号分隔的标签字符串：",
+                "proofread_contract": "你是一个专业的法务和合同校对助手。请对以下合同文本进行全面的法律合规性审查、风险提示以及校对。如果发现任何不符合法律法规、存在法律风险或表达不严谨的地方，请详细列出并提供修改建议：",
             }
         
         default_msg = "You are a professional document editing assistant. Please assist with the following text:" if lang == 'en' else "你是一个专业的文档编辑助手。请协助处理以下文字："

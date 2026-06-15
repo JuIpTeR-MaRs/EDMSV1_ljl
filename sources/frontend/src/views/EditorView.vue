@@ -152,6 +152,7 @@
       <el-button size="small" @click="insertCustomTable">{{ t("editor.toolbar.table") }}</el-button>
       <el-button size="small" type="success" plain @click="importDocx">{{ t("editor.toolbar.importDocx") }}</el-button>
       <el-button size="small" type="info" plain @click="searchVisible = !searchVisible">{{ t("editor.toolbar.findReplace") }}</el-button>
+      <el-button size="small" type="warning" plain @click="runContractProofread" :loading="proofreading">合同校对</el-button>
       
       <el-button-group class="toolbar-group" v-if="editor && editor.isActive('table')">
         <el-button size="small" @click="editor.chain().focus().addRowBefore().run()">{{ t("editor.toolbar.addRowBefore") }}</el-button>
@@ -1074,6 +1075,68 @@ async function runLogicCheck() {
     ElMessage.error(t("editor.ai.logicCheckFailed"));
   } finally {
     checkingLogic.value = false;
+  }
+}
+
+const proofreading = ref(false);
+async function runContractProofread() {
+  if (!editor.value) return;
+  const text = editor.value.getText();
+  if (!text.trim()) {
+    ElMessage.warning("文档内容为空，无法进行校对。");
+    return;
+  }
+  
+  if (isSideCollapsed.value) {
+    toggleSideCollapse();
+  }
+  activeSideTab.value = "ai";
+  
+  proofreading.value = true;
+  aiStore.addMessage('editor', 'user', "正在对当前文档进行合同法律校对审查...");
+  
+  const aiMsg: any = { role: 'ai', content: "", action: undefined };
+  aiStore.editorMessages.push(aiMsg);
+  askingCount.value++;
+  scrollToBottom(true);
+  
+  try {
+    const response = await fetch('/api/ai/generate', {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${auth.token}` },
+      body: JSON.stringify({ action: "proofread_contract", prompt: text.slice(0, 5000), lang: locale.value, ai_model: aiStore.selectedModel })
+    });
+    
+    if (!response.ok) throw new Error("API request failed");
+    
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = new TextDecoder().decode(value);
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") break;
+          try {
+            const data = JSON.parse(raw);
+            if (data.type === 'chunk' && data.content) {
+              aiMsg.content += data.content;
+              scrollToBottom();
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Proofread failed:", err);
+    aiMsg.content += "\n⚠️ 校对失败。";
+  } finally {
+    proofreading.value = false;
+    askingCount.value = Math.max(0, askingCount.value - 1);
   }
 }
 

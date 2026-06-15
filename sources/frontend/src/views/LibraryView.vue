@@ -217,7 +217,7 @@
           <template #default="{ row }">
             <el-checkbox 
               :model-value="selectedSet.has(row.id)" 
-              @change="(val) => handleSelectRow(val, row)" 
+              @change="(val: boolean) => handleSelectRow(val, row)" 
             />
           </template>
         </el-table-column>
@@ -762,6 +762,10 @@ function openShare(id: number) {
 }
 
 function onImportDocx(file: UploadRawFile) {
+  if (file.size > 500 * 1024 * 1024) {
+    ElMessage.warning(t('library.fileTooLarge', '上传的文件太大，最大允许 500MB。'));
+    return false;
+  }
   doImportDocx(file);
   return false;
 }
@@ -816,6 +820,10 @@ async function doImportDocx(file: UploadRawFile) {
 }
 
 function onImportPdf(file: UploadRawFile) {
+  if (file.size > 500 * 1024 * 1024) {
+    ElMessage.warning(t('library.fileTooLarge', '上传的文件太大，最大允许 500MB。'));
+    return false;
+  }
   doImportPdf(file);
   return false;
 }
