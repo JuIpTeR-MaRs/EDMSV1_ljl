@@ -43,33 +43,37 @@ else
     exit 1
 fi
 
-# Sync or create .env file in bin/ directory
-if [ -f "$SCRIPT_DIR/.env" ]; then
-    echo "Copying .env file from docker/ directory to bin/..."
-    cp "$SCRIPT_DIR/.env" "$ENV_FILE"
-    echo "[OK] Synced .env file"
-    echo ""
-else
-    if [ ! -f "$ENV_FILE" ]; then
-        echo "Creating .env file in bin/ directory from template..."
-        cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
-        echo "[OK] Created .env file from template"
+# Sync or create .env file from project root
+ROOT_ENV_FILE="$SCRIPT_DIR/../../.env"
+ROOT_ENV_EXAMPLE="$SCRIPT_DIR/../../.env.example"
+
+if [ ! -f "$ROOT_ENV_FILE" ]; then
+    if [ -f "$ROOT_ENV_EXAMPLE" ]; then
+        echo "Creating .env file in project root from template..."
+        cp "$ROOT_ENV_EXAMPLE" "$ROOT_ENV_FILE"
+        echo "[OK] Created .env file in project root"
         
         # Auto-generate JWT_SECRET_KEY if empty
-        if grep -q "^JWT_SECRET_KEY=$" "$ENV_FILE" || ! grep -q "^JWT_SECRET_KEY=" "$ENV_FILE"; then
+        if grep -q "^JWT_SECRET_KEY=$" "$ROOT_ENV_FILE" || ! grep -q "^JWT_SECRET_KEY=" "$ROOT_ENV_FILE"; then
             echo "Auto-generating JWT_SECRET_KEY..."
             JWT_KEY=$(openssl rand -hex 32)
-            grep -v "^JWT_SECRET_KEY=" "$ENV_FILE" > "$ENV_FILE.tmp" || true
-            echo "JWT_SECRET_KEY=$JWT_KEY" >> "$ENV_FILE.tmp"
-            mv "$ENV_FILE.tmp" "$ENV_FILE"
+            grep -v "^JWT_SECRET_KEY=" "$ROOT_ENV_FILE" > "$ROOT_ENV_FILE.tmp" || true
+            echo "JWT_SECRET_KEY=$JWT_KEY" >> "$ROOT_ENV_FILE.tmp"
+            mv "$ROOT_ENV_FILE.tmp" "$ROOT_ENV_FILE"
             echo "[OK] JWT_SECRET_KEY generated"
         fi
-        echo ""
     else
-        echo "[OK] .env file already exists in bin/ directory"
-        echo ""
+        echo "ERROR: Project root .env.example template not found!"
+        exit 1
     fi
 fi
+
+echo "Copying .env file from project root directory to bin/..."
+cp "$ROOT_ENV_FILE" "$ENV_FILE"
+echo "Copying .env file from project root directory to docker/..."
+cp "$ROOT_ENV_FILE" "$SCRIPT_DIR/.env"
+echo "[OK] Synced .env file to bin/ and docker/ directories"
+echo ""
 
 # Create data directory in bin/ directory if it doesn't exist
 if [ ! -d "$DATA_DIR" ]; then

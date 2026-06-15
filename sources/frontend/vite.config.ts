@@ -10,6 +10,7 @@ const sslCertPath = path.resolve(__dirname, "../../localhost+2.pem");
 const hasCert = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath);
 
 export default defineConfig({
+  envDir: path.resolve(__dirname, "../../"),
   plugins: [vue()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },

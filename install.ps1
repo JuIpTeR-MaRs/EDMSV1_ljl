@@ -1,4 +1,4 @@
-﻿# UTF-8 Encoding
+# UTF-8 Encoding
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -36,32 +36,19 @@ if ($python) {
 Write-Host ""
 
 # 2. 自动复制配置文件模版 (.env)
-Write-Host "[2/4] 初始化配置文件 (.env)..." -ForegroundColor Yellow
+Write-Host "[2/4] 初始化根目录配置文件 (.env)..." -ForegroundColor Yellow
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$backendEnv = Join-Path $scriptDir "sources\backend\.env"
-$backendEnvEx = Join-Path $scriptDir "sources\backend\.env.example"
-$frontendEnv = Join-Path $scriptDir "sources\frontend\.env"
-$frontendEnvEx = Join-Path $scriptDir "sources\frontend\.env.example"
+$rootEnv = Join-Path $scriptDir ".env"
+$rootEnvEx = Join-Path $scriptDir ".env.example"
 
-if (Test-Path $backendEnv) {
-    Write-Host " [跳过] sources/backend/.env 已存在，无需复制。" -ForegroundColor Gray
+if (Test-Path $rootEnv) {
+    Write-Host " [跳过] 根目录下 .env 已存在，无需复制。" -ForegroundColor Gray
 } else {
-    if (Test-Path $backendEnvEx) {
-        Copy-Item $backendEnvEx $backendEnv
-        Write-Host " [OK] 已成功复制 sources/backend/.env.example 到 .env" -ForegroundColor Green
+    if (Test-Path $rootEnvEx) {
+        Copy-Item $rootEnvEx $rootEnv
+        Write-Host " [OK] 已成功复制根目录 .env.example 到 .env" -ForegroundColor Green
     } else {
-        Write-Error " [错误] 未找到 sources/backend/.env.example 模版文件。"
-    }
-}
-
-if (Test-Path $frontendEnv) {
-    Write-Host " [跳过] sources/frontend/.env 已存在，无需复制。" -ForegroundColor Gray
-} else {
-    if (Test-Path $frontendEnvEx) {
-        Copy-Item $frontendEnvEx $frontendEnv
-        Write-Host " [OK] 已成功复制 sources/frontend/.env.example 到 .env" -ForegroundColor Green
-    } else {
-        Write-Error " [错误] 未找到 sources/frontend/.env.example 模版文件。"
+        Write-Error " [错误] 未找到根目录 .env.example 模板文件。"
     }
 }
 Write-Host ""
