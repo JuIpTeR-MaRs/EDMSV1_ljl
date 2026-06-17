@@ -23,7 +23,7 @@
 
       <div class="chat-area" ref="chatArea">
         <div v-for="(msg, index) in messages" :key="index" :class="['chat-bubble', msg.role]">
-          <div v-if="msg.role === 'assistant'" class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+          <div v-if="msg.role === 'assistant'" class="markdown-body" v-html="renderMarkdown(msg.content)" @click="handleLinkClick"></div>
           <div v-else class="text-body">{{ msg.content }}</div>
         </div>
         <div v-if="loading" class="chat-bubble assistant typing">
@@ -48,6 +48,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { ChatDotRound } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { marked } from 'marked';
@@ -71,6 +72,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const router = useRouter();
 
 const displayDocs = computed<SelectedDoc[]>(() => {
   if (props.selectedDocs && props.selectedDocs.length > 0) {
@@ -102,11 +104,33 @@ function onClosed() {
 
 function renderMarkdown(text: string) {
   try {
-    return marked(text);
+    return marked.parse(text);
   } catch (e) {
     return text;
   }
 }
+
+const handleLinkClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  const anchor = target.closest('a');
+  if (anchor) {
+    const href = anchor.getAttribute('href');
+    if (href) {
+      const isRelative = href.startsWith('/') || href.startsWith('./') || href.startsWith('../');
+      const isAbsoluteLocal = href.startsWith(window.location.origin);
+      if (isRelative || isAbsoluteLocal) {
+        e.preventDefault();
+        const url = new URL(href, window.location.origin);
+        let path = url.pathname;
+        if (path.startsWith('/docs/detail/')) {
+          path = path.replace('/docs/detail/', '/doc/');
+        }
+        visible.value = false;
+        router.push(path);
+      }
+    }
+  }
+};
 
 function scrollToBottom() {
   nextTick(() => {

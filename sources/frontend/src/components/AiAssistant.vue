@@ -19,7 +19,7 @@
             <div class="bubble">
               <div class="content">
                 <template v-if="msg.content">
-                  <div v-html="renderMarkdown(msg.content)"></div>
+                  <div v-html="renderMarkdown(msg.content)" @click="handleLinkClick"></div>
                 </template>
                 <template v-else-if="isTyping && i === aiStore.globalMessages.length - 1">
                   <div style="display: flex; justify-content: center; align-items: center; min-height: 40px; min-width: 60px;">
@@ -367,6 +367,33 @@ const renderMarkdown = (text: string) => {
   return marked.parse(cleanText);
 };
 
+const handleLinkClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  const anchor = target.closest('a');
+  if (anchor) {
+    const href = anchor.getAttribute('href');
+    if (href) {
+      const isRelative = href.startsWith('/') || href.startsWith('./') || href.startsWith('../');
+      const isAbsoluteLocal = href.startsWith(window.location.origin);
+      if (isRelative || isAbsoluteLocal) {
+        e.preventDefault();
+        const url = new URL(href, window.location.origin);
+        let path = url.pathname;
+        if (path.startsWith('/docs/detail/')) {
+          path = path.replace('/docs/detail/', '/doc/');
+        }
+        if (path.startsWith('/doc/')) {
+          if (route.path.startsWith('/doc/')) {
+            window.location.href = path;
+            return;
+          }
+        }
+        router.push(path);
+      }
+    }
+  }
+};
+
 const scrollToBottom = async () => {
   await nextTick();
   if (scrollContainer.value) {
@@ -454,7 +481,7 @@ const sendMessage = async () => {
                     res = await api.get('/documents', { params: { search: query } });
                     const items = res.data.items || [];
                     if (items.length > 0) {
-                      resultHtml = "\n\n### 找到以下文档:\n" + items.map((d:any) => `- **[${d.doc_number}] ${d.title}** (状态: ${d.status})`).join('\n');
+                      resultHtml = "\n\n### 找到以下文档:\n" + items.map((d:any) => `- **[《${d.title}》](/doc/${d.doc_number || d.id})** (编号: ${d.doc_number}, 状态: ${d.status})`).join('\n');
                     } else {
                       resultHtml = "\n\n❌ 未找到相关文档。";
                     }

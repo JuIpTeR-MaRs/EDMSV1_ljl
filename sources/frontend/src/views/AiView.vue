@@ -30,7 +30,7 @@
             <div class="role-label">{{ msg.role === 'user' ? t('aiView.userRole') : t('aiView.aiRole') }}</div>
             <div class="text-content">
               <template v-if="msg.content">
-                <div v-html="renderMarkdown(msg.content)"></div>
+                <div v-html="renderMarkdown(msg.content)" @click="handleLinkClick"></div>
               </template>
               <template v-else-if="isTyping && i === aiStore.globalMessages.length - 1">
                 <div style="display: flex; justify-content: flex-start; align-items: center; min-height: 50px;">
@@ -139,6 +139,27 @@ const renderMarkdown = (text: string) => {
   if (!text) return '';
   const cleanText = text.replace(/[\[<]ACTION:[\s\S]*?[\]>]/g, '').trim();
   return marked.parse(cleanText);
+};
+
+const handleLinkClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  const anchor = target.closest('a');
+  if (anchor) {
+    const href = anchor.getAttribute('href');
+    if (href) {
+      const isRelative = href.startsWith('/') || href.startsWith('./') || href.startsWith('../');
+      const isAbsoluteLocal = href.startsWith(window.location.origin);
+      if (isRelative || isAbsoluteLocal) {
+        e.preventDefault();
+        const url = new URL(href, window.location.origin);
+        let path = url.pathname;
+        if (path.startsWith('/docs/detail/')) {
+          path = path.replace('/docs/detail/', '/doc/');
+        }
+        router.push(path);
+      }
+    }
+  }
 };
 
 const scrollToBottom = async (force = false) => {
@@ -271,7 +292,7 @@ const sendMessage = async (isFeedback = false) => {
                     res = await api.get('/documents', { params: { search: query } });
                     const items = res.data.items || [];
                     resultHtml = items.length > 0 
-                      ? "\n\n### 找到以下文档:\n" + items.map((d:any) => `- **[${d.doc_number}] ${d.title}** (状态: ${d.status})`).join('\n')
+                      ? "\n\n### 找到以下文档:\n" + items.map((d:any) => `- **[《${d.title}》](/doc/${d.doc_number || d.id})** (编号: ${d.doc_number}, 状态: ${d.status})`).join('\n')
                       : "\n\n❌ 未找到相关文档。";
                   } else if (entity === 'users') {
                     res = await api.get('/users', { params: { search: query } });

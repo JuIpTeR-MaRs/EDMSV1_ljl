@@ -42,7 +42,7 @@ class AIService:
         return openai.OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
 
     @staticmethod
-    def stream_chat(messages, user_context=None, doc_context=None, current_user=None, ai_model='deepseek'):
+    def stream_chat(messages, user_context=None, doc_context=None, current_user=None, ai_model='deepseek', system_prompt_override=None):
         """Call the real AI API with streaming."""
         client = AIService.get_client(ai_model)
         model_name = "deepseek-chat"
@@ -91,7 +91,7 @@ class AIService:
         pending_count = 0
         total_users = 0
         total_docs = 0
-        if current_user:
+        if system_prompt_override is None and current_user:
             from app.extensions import db
             from sqlalchemy import text
             from app.models.core import User
@@ -120,7 +120,10 @@ class AIService:
             except:
                 pass
 
-        system_content = f"你现在是 EDMS 系统的核心智能助理。\n当前操作员：{user_name} ({role_desc})\n[系统状态] 系统内共有 {total_users} 位成员，{total_docs} 份文档。您当前有 {pending_count} 份待处理的审批申请。" + context_info + "\n\n" + """
+        if system_prompt_override is not None:
+            system_content = system_prompt_override
+        else:
+            system_content = f"你现在是 EDMS 系统的核心智能助理。\n当前操作员：{user_name} ({role_desc})\n[系统状态] 系统内共有 {total_users} 位成员，{total_docs} 份文档。您当前有 {pending_count} 份待处理的审批申请。" + context_info + "\n\n" + """
 【核心指令】
 1. **直接执行**：如果用户让你搜索、统计或分析，你必须且只能输出对应的 [ACTION] 标签。
 2. **总结任务**：要总结“最近一周/月”或“系统动态”，必须使用 [ACTION: QUERY_DASHBOARD, TYPE: activity]。严禁使用 QUERY_DATA 搜索时间词。
@@ -131,6 +134,7 @@ class AIService:
    - 统计计数：[ACTION: QUERY_STATS, TYPE: user_count|document_count]
    - 仪表盘分析（周报/动态）：[ACTION: QUERY_DASHBOARD, TYPE: storage|activity|distribution|security|general]
 5. **重要**：直接回复结果。严禁复述、解释或翻译系统给你的内部反馈指令。
+6. **文档链接跳转**：当你的回答中提到、引用或列出系统内的文档时（例如在处理系统数据反馈或回答时），你必须使用 Markdown 格式生成可点击的跳转链接。链接路径必须为 `/doc/{{文档编号或ID}}`（例如：`[《{{文档标题}}》](/doc/{{文档编号}})`），以确保用户可以点击直接跳转。
 """
         system_prompt = {
             "role": "system",

@@ -286,7 +286,7 @@
                 <transition-group name="msg" tag="div" class="chat-messages" ref="chatScroll">
                   <template v-for="(msg, idx) in aiStore.editorMessages" :key="idx">
                     <div v-if="!msg.hidden" :class="['chat-msg', msg.role]">
-                    <div class="msg-content" v-html="renderMarkdown(msg.content)"></div>
+                    <div class="msg-content" v-html="renderMarkdown(msg.content)" @click="handleLinkClick"></div>
                     
                     <div v-if="msg.role === 'ai' || msg.role === 'assistant'" class="msg-footer" style="margin-top: 8px;">
                       <el-button 
@@ -934,6 +934,31 @@ const renderMarkdown = (text: string) => {
   return marked.parse(cleanText);
 };
 
+const handleLinkClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  const anchor = target.closest('a');
+  if (anchor) {
+    const href = anchor.getAttribute('href');
+    if (href) {
+      const isRelative = href.startsWith('/') || href.startsWith('./') || href.startsWith('../');
+      const isAbsoluteLocal = href.startsWith(window.location.origin);
+      if (isRelative || isAbsoluteLocal) {
+        e.preventDefault();
+        const url = new URL(href, window.location.origin);
+        let path = url.pathname;
+        if (path.startsWith('/docs/detail/')) {
+          path = path.replace('/docs/detail/', '/doc/');
+        }
+        if (path.startsWith('/doc/')) {
+          window.location.href = path;
+        } else {
+          router.push(path);
+        }
+      }
+    }
+  }
+};
+
 const insertChatToEditor = (content: string) => {
   if (!editor.value || !content) return;
   
@@ -1209,7 +1234,7 @@ async function askAi(isFeedback = false) {
                     res = await api.get('/documents', { params: { search: query } });
                     const items = res.data.items || [];
                     if (items.length > 0) {
-                      resultHtml = "\n\n### 找到以下文档:\n" + items.map((d:any) => `- **[${d.doc_number}] ${d.title}** (状态: ${d.status})`).join('\n');
+                      resultHtml = "\n\n### 找到以下文档:\n" + items.map((d:any) => `- **[《${d.title}》](/doc/${d.doc_number || d.id})** (编号: ${d.doc_number}, 状态: ${d.status})`).join('\n');
                     } else {
                       resultHtml = "\n\n❌ 未找到相关文档。";
                     }

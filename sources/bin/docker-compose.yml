@@ -31,7 +31,7 @@ services:
       - ./data/backend:/app/data
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql+pymysql://${MYSQL_USER:-edmsuser}:${MYSQL_PASSWORD:-edmspass}@db:3306/${MYSQL_DATABASE:-edms}}
       - STORAGE_PATH=/app/data
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
