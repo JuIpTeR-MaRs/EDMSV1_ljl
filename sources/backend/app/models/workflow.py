@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from app.extensions import db
+from app.extensions import db, BaseModel
 
 
-class ApprovalFlow(db.Model):
+class ApprovalFlow(BaseModel):
     __tablename__ = "approval_flows"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -24,7 +24,7 @@ class ApprovalFlow(db.Model):
     )
 
 
-class ApprovalParticipant(db.Model):
+class ApprovalParticipant(BaseModel):
     __tablename__ = "approval_participants"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -42,7 +42,7 @@ class ApprovalParticipant(db.Model):
     )
 
 
-class ApprovalDecision(db.Model):
+class ApprovalDecision(BaseModel):
     __tablename__ = "approval_decisions"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -54,7 +54,7 @@ class ApprovalDecision(db.Model):
     participant = db.relationship("ApprovalParticipant", back_populates="decision")
 
 
-class AuditLog(db.Model):
+class AuditLog(BaseModel):
     __tablename__ = "audit_logs"
 
     id = db.Column(db.Integer, primary_key=True)

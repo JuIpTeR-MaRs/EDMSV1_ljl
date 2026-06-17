@@ -1,13 +1,13 @@
 from datetime import date
 from typing import TYPE_CHECKING
 
-from app.extensions import db
+from app.extensions import db, BaseModel
 
 if TYPE_CHECKING:
     from app.models.document import Document
 
 
-class Department(db.Model):
+class Department(BaseModel):
     __tablename__ = "departments"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -18,7 +18,7 @@ class Department(db.Model):
     users = db.relationship("User", back_populates="department")
 
 
-class Position(db.Model):
+class Position(BaseModel):
     __tablename__ = "positions"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -27,7 +27,7 @@ class Position(db.Model):
     full_name_en = db.Column(db.String(256), nullable=True) # 💡 增加英文全称
 
 
-class User(db.Model):
+class User(BaseModel):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)

@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from app.extensions import db
+from app.extensions import db, BaseModel
 
 
-class Comment(db.Model):
+class Comment(BaseModel):
     __tablename__ = "comments"
 
     id = db.Column(db.Integer, primary_key=True)

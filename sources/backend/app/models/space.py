@@ -1,10 +1,10 @@
 """Enterprise Workspace (Space) model."""
 from datetime import datetime
 
-from app.extensions import db
+from app.extensions import db, BaseModel
 
 
-class Space(db.Model):
+class Space(BaseModel):
     __tablename__ = "spaces"
 
     id = db.Column(db.Integer, primary_key=True)

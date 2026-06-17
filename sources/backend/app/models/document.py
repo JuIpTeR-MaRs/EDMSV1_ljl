@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from app.extensions import db
+from app.extensions import db, BaseModel
 
 
 
@@ -14,7 +14,7 @@ document_spaces = db.Table(
 
 
 
-class Document(db.Model):
+class Document(BaseModel):
     __tablename__ = "documents"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -80,7 +80,7 @@ class Document(db.Model):
         return doc
 
 
-class DocumentVersion(db.Model):
+class DocumentVersion(BaseModel):
     __tablename__ = "document_versions"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -117,7 +117,7 @@ class DocumentVersion(db.Model):
         )
 
 
-class DocumentPermission(db.Model):
+class DocumentPermission(BaseModel):
     __tablename__ = "document_permissions"
 
     id = db.Column(db.Integer, primary_key=True)
