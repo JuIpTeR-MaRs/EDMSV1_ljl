@@ -791,22 +791,27 @@ async function doImportDocx(file: UploadRawFile) {
       })
     });
     
-    const tempEditor = new Editor({
-      extensions: [
-        StarterKit,
-        Underline,
-        Image.configure({ allowBase64: true }),
-        Table.configure({ resizable: true }),
-        TableRow,
-        TableHeader,
-        TableCell,
-        TextAlign.configure({ types: ["heading", "paragraph", "image"] }),
-      ],
-      content: html,
+    const content_json = await new Promise((resolve) => {
+      new Editor({
+        extensions: [
+          StarterKit,
+          Underline,
+          Image.configure({ allowBase64: true }),
+          Table.configure({ resizable: true }),
+          TableRow,
+          TableHeader,
+          TableCell,
+          TextAlign.configure({ types: ["heading", "paragraph", "image"] }),
+        ],
+        content: html,
+        onCreate({ editor }) {
+          resolve(editor.getJSON());
+          setTimeout(() => {
+            editor.destroy();
+          }, 0);
+        }
+      });
     });
-    
-    const content_json = tempEditor.getJSON();
-    tempEditor.destroy();
 
     await api.put(`/documents/${docId}/content`, {
       content_json: JSON.stringify(content_json),
