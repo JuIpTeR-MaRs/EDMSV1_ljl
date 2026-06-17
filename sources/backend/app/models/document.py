@@ -26,7 +26,7 @@ class Document(BaseModel):
     )  # draft, in_approval, approved, rejected
     is_public = db.Column(db.Boolean, default=False)
     current_version_id = db.Column(db.Integer, db.ForeignKey("document_versions.id"), nullable=True)
-    page_settings_json = db.Column(db.Text, nullable=True)  # JSON string
+    page_settings_json = db.Column(db.Text(length=4294967295), nullable=True)  # JSON string
     space_id = db.Column(db.Integer, db.ForeignKey("spaces.id"), nullable=True)
     parent_id = db.Column(db.Integer, db.ForeignKey("documents.id"), nullable=True)
     is_template = db.Column(db.Boolean, default=False)
@@ -42,7 +42,7 @@ class Document(BaseModel):
     tx_hash = db.Column(db.String(256), nullable=True)
 
     # === AI 元数据字段 ===
-    summary = db.Column(db.Text, nullable=True)
+    summary = db.Column(db.Text(length=4294967295), nullable=True)
     tags = db.Column(db.String(512), nullable=True) # JSON or comma separated string
     category = db.Column(db.String(128), nullable=True)
 
@@ -86,8 +86,8 @@ class DocumentVersion(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     document_id = db.Column(db.Integer, db.ForeignKey("documents.id"), nullable=False)
     version_no = db.Column(db.Integer, nullable=False, default=1)
-    content_json = db.Column(db.Text, nullable=True)  # TipTap / ProseMirror JSON
-    yjs_state = db.Column(db.LargeBinary, nullable=True)
+    content_json = db.Column(db.Text(length=4294967295), nullable=True)  # TipTap / ProseMirror JSON
+    yjs_state = db.Column(db.LargeBinary(length=4294967295), nullable=True)
     file_path = db.Column(db.String(512), nullable=True) # Path for PDF/Binary files
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     parent_version_id = db.Column(db.Integer, db.ForeignKey("document_versions.id"), nullable=True)

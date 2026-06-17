@@ -125,6 +125,9 @@ const handleLinkClick = (e: MouseEvent) => {
         if (path.startsWith('/docs/detail/')) {
           path = path.replace('/docs/detail/', '/doc/');
         }
+        if (path.startsWith('/editor/')) {
+          path = path.replace('/editor/', '/doc/');
+        }
         visible.value = false;
         router.push(path);
       }

@@ -35,6 +35,36 @@
    - Linux: 运行 `./build.sh`。
    - 或者手动执行：`docker-compose up -d --build`。
 
+#### 【选项 A-1：在 Docker 部署中启用 HTTPS 加密（可选）】
+如果您需要在容器化部署中启用安全传输协议 (HTTPS)，系统已预置了 Nginx SSL 配置文件和端口绑定。具体配置步骤如下：
+
+1. **准备 SSL 证书**：
+   在 `sources/docker/certs/` 目录下放置您的 SSL 证书和私钥文件，并分别命名为：
+   - 证书文件：`fullchain.pem`
+   - 私钥文件：`privkey.pem`
+   
+   *(提示：如果您使用的是本地脚本部署中由 `mkcert` 自动生成的开发证书，可以直接将项目根目录下的 `localhost+2.pem` 重命名拷贝为 `certs/fullchain.pem`，将 `localhost+2-key.pem` 重命名拷贝为 `certs/privkey.pem`；或者直接修改 `docker-compose.yml` 里的卷挂载，将证书文件映射至根目录，例如：)*
+   ```yaml
+   - ../../localhost+2.pem:/etc/nginx/certs/fullchain.pem:ro
+   - ../../localhost+2-key.pem:/etc/nginx/certs/privkey.pem:ro
+   ```
+
+2. **启用卷挂载配置**：
+   修改 `sources/docker/docker-compose.yml`，在 `frontend` 服务的 `volumes` 部分下，取消以下两行的注释以挂载证书和 Nginx 配置文件：
+   ```yaml
+   - ./frontend/nginx.ssl.conf:/etc/nginx/conf.d/default.conf:ro
+   - ./certs:/etc/nginx/certs:ro
+   ```
+
+3. **指定 HTTPS 端口（可选）**：
+   默认使用宿主机的 `443` 端口接入 HTTPS。如需更换，可在 `sources/docker/.env` 文件中修改 `SSL_PORT` 变量。
+
+4. **重新编译并启动容器**：
+   ```bash
+   docker-compose down
+   docker-compose up -d --build
+   ```
+
 #### 【选项 B：手动本地部署】
 1. **MySQL 初始化**：
    ```sql

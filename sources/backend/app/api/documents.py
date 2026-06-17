@@ -621,8 +621,10 @@ def import_pdf():
     
     # Save file
     filename = f"{uuid.uuid4()}.pdf"
-    # Ensure directory exists in workspace
-    upload_dir = os.path.join("app", "static", "uploads", "pdfs")
+    
+    from flask import current_app
+    storage_base = os.environ.get("STORAGE_PATH", current_app.root_path)
+    upload_dir = os.path.join(storage_base, "static", "uploads", "pdfs")
     if not os.path.exists(upload_dir):
         os.makedirs(upload_dir, exist_ok=True)
     

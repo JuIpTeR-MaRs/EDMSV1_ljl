@@ -382,6 +382,9 @@ const handleLinkClick = (e: MouseEvent) => {
         if (path.startsWith('/docs/detail/')) {
           path = path.replace('/docs/detail/', '/doc/');
         }
+        if (path.startsWith('/editor/')) {
+          path = path.replace('/editor/', '/doc/');
+        }
         if (path.startsWith('/doc/')) {
           if (route.path.startsWith('/doc/')) {
             window.location.href = path;

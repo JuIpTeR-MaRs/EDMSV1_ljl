@@ -771,13 +771,14 @@ function onImportDocx(file: UploadRawFile) {
 }
 
 async function doImportDocx(file: UploadRawFile) {
+  let docId: number | null = null;
   try {
     const payload: any = { title: file.name.replace(/\.docx$/, "") };
     if (currentSpaceId.value && currentSpaceId.value !== "unassigned") {
       payload.space_id = currentSpaceId.value;
     }
     const { data: docData } = await api.post("/documents", payload);
-    const docId = docData.id;
+    docId = docData.id;
     
     const ab = await file.arrayBuffer();
     const { value: html } = await mammoth.convertToHtml({ arrayBuffer: ab }, {
@@ -816,6 +817,13 @@ async function doImportDocx(file: UploadRawFile) {
   } catch (error) {
     console.error("Import DOCX error:", error);
     ElMessage.error(t("library.importDocxFailed"));
+    if (docId) {
+      try {
+        await api.delete(`/documents/${docId}`);
+      } catch (cleanupError) {
+        console.error("Clean up failed import document error:", cleanupError);
+      }
+    }
   }
 }
 
