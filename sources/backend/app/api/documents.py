@@ -116,6 +116,20 @@ def _async_parse_and_vectorize_pdf(task_id: str, app, doc_id: int, file_path: st
                 doc_update.summary = meta.get("summary", "")
                 doc_update.tags = meta.get("tags", "")
                 doc_update.category = meta.get("category", "")
+                
+                # Save extracted text to current_version.content_json as TipTap structure
+                if doc_update.current_version and text_content:
+                    tiptap_content = {
+                        "type": "doc",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": line}]
+                            } for line in text_content.split("\n") if line.strip()
+                        ]
+                    }
+                    doc_update.current_version.content_json = json.dumps(tiptap_content)
+                    
                 db.session.commit()
         except Exception as e:
             print(f"[Background Task] AI Metadata generation error: {e}")

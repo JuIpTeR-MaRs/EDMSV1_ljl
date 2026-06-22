@@ -41,18 +41,76 @@ def ai_chat():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+def get_document_text(doc):
+    ver = doc.current_version
+    if not ver:
+        return doc.title
+        
+    text_content = ""
+    if doc.doc_type == "pdf":
+        # 1. Try to load from content_json first
+        if ver.content_json:
+            try:
+                cj = json.loads(ver.content_json) if isinstance(ver.content_json, str) else ver.content_json
+                from app.utils.text import extract_text_from_tiptap
+                text_content = extract_text_from_tiptap(cj)
+            except Exception:
+                pass
+                
+        # 2. Try to parse PDF on-demand if content_json is empty and file_path exists
+        if not text_content and ver.file_path:
+            import os
+            from flask import current_app
+            storage_base = os.environ.get("STORAGE_PATH", current_app.root_path)
+            rel_path = ver.file_path.lstrip('/')
+            abs_path = os.path.join(storage_base, rel_path)
+            if os.path.exists(abs_path):
+                try:
+                    from pypdf import PdfReader
+                    reader = PdfReader(abs_path)
+                    text_content = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+                except Exception as e:
+                    print(f"Error parsing PDF on demand: {e}")
+    else:
+        # Rich text document
+        if ver.content_json:
+            try:
+                cj = json.loads(ver.content_json) if isinstance(ver.content_json, str) else ver.content_json
+                from app.utils.text import extract_text_from_tiptap
+                text_content = extract_text_from_tiptap(cj)
+            except Exception:
+                pass
+                
+    return text_content if text_content else doc.title
+
 @bp.route("/generate", methods=["POST"])
 @jwt_required()
 def ai_generate():
     data = request.get_json() or {}
-    prompt = data.get("prompt", "")
+    doc_id = data.get("doc_id")
     action = data.get("action", "")
     lang = data.get("lang", "zh")
-    
-    if not prompt:
-        return jsonify({"error": "No prompt provided"}), 400
-        
     ai_model = data.get("ai_model", "deepseek")
+    
+    prompt = ""
+    if doc_id:
+        from app.models.document import Document
+        from app.services.document_access import user_can_view_document
+        
+        user = current_user()
+        doc = Document.get_by_id_or_number(doc_id)
+        if not doc or not user_can_view_document(user, doc):
+            return jsonify({"error": "Document not found or access denied"}), 404
+            
+        prompt = get_document_text(doc)
+    else:
+        prompt = data.get("prompt", "")
+        
+    if not prompt:
+        return jsonify({"error": "No prompt or document content provided"}), 400
+        
+    # Limit prompt length to avoid token limit issues
+    prompt = prompt[:5000]
     
     from app.extensions import db
     db.session.remove()
@@ -346,17 +404,10 @@ def check_logic():
     from app.models import Document
     from app.extensions import db
     doc = Document.get_by_id_or_number(doc_id)
-    if not doc or not doc.current_version:
+    if not doc:
         return jsonify({"error": "Document not found"}), 404
         
-    ver = doc.current_version
-    text_content = ""
-    try:
-        cj = json.loads(ver.content_json) if isinstance(ver.content_json, str) else ver.content_json
-        from app.utils.text import extract_text_from_tiptap
-        text_content = extract_text_from_tiptap(cj)
-    except Exception:
-        text_content = doc.title
+    text_content = get_document_text(doc)
         
     # IMPORTANT: Release connection back to pool before slow network IO!
     db.session.remove()
