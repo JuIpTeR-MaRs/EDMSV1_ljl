@@ -12,7 +12,7 @@ EDMS (Electronic Document Management System) is a modern electronic document man
 - **Master Data Management**: Support for importing master data such as departments, positions, and personnel
 - **Comment System**: Document comments and feedback
 - **Permission Control**: Fine-grained document permission management
-- **Internationalization Support**: Chinese, English, and Russian interfaces
+- **Internationalization Support**: Chinese and English interfaces
 
 ### 1.2 Technology Stack
 

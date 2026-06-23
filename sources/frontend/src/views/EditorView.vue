@@ -244,7 +244,6 @@
                   <el-dropdown-item divided command="fix_punctuation">✨ {{ t("editor.ai.fixPunc") }}</el-dropdown-item>
                   <el-dropdown-item divided command="translate_en">{{ t("editor.ai.translateEn") }}</el-dropdown-item>
                   <el-dropdown-item command="translate_zh">{{ t("editor.ai.translateZh") }}</el-dropdown-item>
-                  <el-dropdown-item command="translate_ru">{{ t("editor.ai.translateRu") }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>

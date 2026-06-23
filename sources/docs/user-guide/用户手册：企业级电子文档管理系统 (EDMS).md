@@ -22,7 +22,7 @@
 
 3. 点击 **登录 (Login)** 按钮。 *(注：根据当前企业配置，无需输入密码)*。
 
-4. 您可以使用顶部导航栏的语言切换器 (Locale Switcher) 切换用户界面语言（英语、俄语、中文）。
+4. 您可以使用顶部导航栏的语言切换器 (Locale Switcher) 切换用户界面语言（英语、中文）。
 
    ![CH-FIRST](E:\English Encoding\competition\比赛文件\GUIDE\pic\CH-FIRST.png)
 

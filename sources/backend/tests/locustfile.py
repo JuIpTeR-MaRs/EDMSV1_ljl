@@ -21,7 +21,10 @@ class EDMSPerformanceUser(HttpUser):
         self.current_user = random.choice(TEST_USERS)
         
         # 1. 模拟用户登录
-        r = self.client.post("/api/auth/login", json={"login_name": self.current_user, "password": "123"})
+        pwd = "123"
+        r = self.client.post("/api/auth/login", json={"login_name": self.current_user, "password": pwd})
+        if r.status_code != 200 and self.current_user == "admin":
+            r = self.client.post("/api/auth/login", json={"login_name": self.current_user, "password": "123456"})
         if r.status_code == 200:
             token = r.json().get("access_token")
             self.headers = {"Authorization": f"Bearer {token}"}
@@ -84,9 +87,13 @@ class EDMSPerformanceUser(HttpUser):
     def login_endpoint_stress(self):
         """核心压测任务：高频向 /api/auth/login 发送登录请求，测试登录接口自身的吞吐能力"""
         user_to_login = random.choice(TEST_USERS)
+        pwd = "123"
+        if user_to_login == "admin":
+            # For admin, we randomly try either 123 or 123456 to simulate realistic behavior / handle both DB states
+            pwd = random.choice(["123", "123456"])
         self.client.post(
             "/api/auth/login", 
-            json={"login_name": user_to_login, "password": "123"},
+            json={"login_name": user_to_login, "password": pwd},
             name="/api/auth/login [Stress]"
         )
 
