@@ -37,6 +37,17 @@
         </div>
 
         <el-button 
+          v-if="meta.doc_type === 'pdf'"
+          type="warning" 
+          plain
+          @click="runContractProofread"
+          :loading="proofreading"
+          style="margin-right: 8px;"
+        >
+          合同校对
+        </el-button>
+
+        <el-button 
           v-if="meta.can_edit && meta.doc_type !== 'pdf'"
           :type="isRecording ? 'danger' : 'primary'" 
           plain
@@ -245,7 +256,6 @@
                   <el-dropdown-item divided command="fix_punctuation">✨ {{ t("editor.ai.fixPunc") }}</el-dropdown-item>
                   <el-dropdown-item divided command="translate_en">{{ t("editor.ai.translateEn") }}</el-dropdown-item>
                   <el-dropdown-item command="translate_zh">{{ t("editor.ai.translateZh") }}</el-dropdown-item>
-                  <el-dropdown-item command="translate_ru">{{ t("editor.ai.translateRu") }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -1086,11 +1096,15 @@ const confirmAiAction = async (action: any, idx: number) => {
 };
 
 async function runAutoTag() {
-  if (!editor.value) return;
+  const isPdf = meta.value?.doc_type === 'pdf';
+  if (!isPdf && !editor.value) return;
   tagging.value = true;
   try {
-    const text = editor.value.getText().slice(0, 500);
-    const response = await api.post("/ai/generate", { action: "auto_tag", prompt: text, lang: locale.value, ai_model: aiStore.selectedModel });
+    const requestBody = isPdf
+      ? { action: "auto_tag", doc_id: docId.value, lang: locale.value, ai_model: aiStore.selectedModel }
+      : { action: "auto_tag", prompt: editor.value?.getText().slice(0, 500) || "", lang: locale.value, ai_model: aiStore.selectedModel };
+      
+    const response = await api.post("/ai/generate", requestBody);
     if (response.data?.content) {
       aiTags.value = response.data.content.split(",").map((s: string) => s.trim());
     }
@@ -1125,9 +1139,10 @@ async function runLogicCheck() {
 
 const proofreading = ref(false);
 async function runContractProofread() {
-  if (!editor.value) return;
-  const text = editor.value.getText();
-  if (!text.trim()) {
+  const isPdf = meta.value?.doc_type === 'pdf';
+  if (!isPdf && !editor.value) return;
+  const text = isPdf ? "" : (editor.value?.getText() || "");
+  if (!isPdf && !text.trim()) {
     ElMessage.warning("文档内容为空，无法进行校对。");
     return;
   }
@@ -1146,10 +1161,14 @@ async function runContractProofread() {
   scrollToBottom(true);
   
   try {
+    const requestBody = isPdf
+      ? { action: "proofread_contract", doc_id: docId.value, lang: locale.value, ai_model: aiStore.selectedModel }
+      : { action: "proofread_contract", prompt: text.slice(0, 5000), lang: locale.value, ai_model: aiStore.selectedModel };
+
     const response = await fetch('/api/ai/generate', {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${auth.token}` },
-      body: JSON.stringify({ action: "proofread_contract", prompt: text.slice(0, 5000), lang: locale.value, ai_model: aiStore.selectedModel })
+      body: JSON.stringify(requestBody)
     });
     
     if (!response.ok) throw new Error("API request failed");

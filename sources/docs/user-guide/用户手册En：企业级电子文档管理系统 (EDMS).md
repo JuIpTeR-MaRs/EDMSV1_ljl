@@ -22,7 +22,7 @@
 
    3. Click the **Login** button. *(Note: No password is required based on current enterprise configurations).*
 
-   4. You can switch the user interface language (English, Russian, Chinese) using the Locale Switcher located in the top navigation bar.
+   4. You can switch the user interface language (English, Chinese) using the Locale Switcher located in the top navigation bar.
 
       ![EN-FIRST](E:\English Encoding\competition\比赛文件\GUIDE\pic\EN-FIRST.png)
 

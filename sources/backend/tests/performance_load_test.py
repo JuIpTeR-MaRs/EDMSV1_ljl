@@ -31,16 +31,18 @@ def generate_test_pdf(filename, num_pages=5):
 def get_auth_token():
     """Logs in as the default bootstrapped administrator to fetch a JWT token."""
     print(f"[*] Authenticating with {BASE_URL}/auth/login for user: {LOGIN_USER}...")
-    try:
-        r = requests.post(f"{BASE_URL}/auth/login", json={"login_name": LOGIN_USER, "password": "123"}, timeout=10)
-        r.raise_for_status()
-        token = r.json().get("access_token")
-        print("[+] Authentication successful!")
-        return token
-    except Exception as e:
-        print(f"[-] Authentication failed: {e}")
-        print("[-] Ensure backend server is running and the database is bootstrapped.")
-        return None
+    for pwd in ["123", "123456"]:
+        try:
+            r = requests.post(f"{BASE_URL}/auth/login", json={"login_name": LOGIN_USER, "password": pwd}, timeout=10)
+            if r.status_code == 200:
+                token = r.json().get("access_token")
+                print(f"[+] Authentication successful with password: {pwd}")
+                return token
+        except Exception as e:
+            print(f"[-] Request failed with password {pwd}: {e}")
+    print("[-] Authentication failed.")
+    print("[-] Ensure backend server is running and the database is bootstrapped.")
+    return None
 
 def poll_task_to_completion(headers, task_id):
     """Polls a task status endpoint until completed or failed, measuring processing time."""

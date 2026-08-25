@@ -12,7 +12,7 @@ EDMS (Electronic Document Management System) is a modern enterprise-grade docume
 - **Master Data Management**: Import for departments, positions, and employees.
 - **AI-Powered Assistance**: Conversational document generation and intelligent layout via image OCR.
 - **Tamper-Proof Traceability**: SHA-256 hashing for approved documents with evidence logged in a Mock Blockchain.
-- **Internationalization**: Seamless interface switching between English, Chinese, and Russian.
+- **Internationalization**: Seamless interface switching between English and Chinese.
 
 ### 1.2 Technology Stack
 

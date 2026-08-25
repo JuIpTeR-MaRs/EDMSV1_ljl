@@ -246,6 +246,8 @@ def run_seed():
     for login, first, last, dept_code, is_mgr in USERS:
         existing = User.query.filter_by(login_name=login).first()
         if existing:
+            if login == 'admin':
+                existing.set_password('123')
             user_map[login] = existing
             continue
         u = User(

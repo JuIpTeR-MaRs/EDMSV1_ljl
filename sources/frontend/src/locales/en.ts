@@ -73,7 +73,6 @@ export default {
     language: "Language",
     english: "English",
     chinese: "中文",
-    russian: "Русский",
   },
   admin: {
     title: "Admin — Master data import",
@@ -349,7 +348,6 @@ export default {
       polish: "Polish Tone",
       translateEn: "Translate to EN",
       translateZh: "Translate to ZH",
-      translateRu: "Translate to RU",
       fixPunc: "Fix Punctuation",
       aiTab: "AI Smart Center",
       aiTags: "Content Tags",

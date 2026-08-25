@@ -72,7 +72,6 @@ export default {
     language: "语言",
     english: "English",
     chinese: "中文",
-    russian: "Русский",
   },
   admin: {
     title: "管理 — 主数据导入",
@@ -344,7 +343,6 @@ export default {
       polish: "语感润色",
       translateEn: "翻译成英文",
       translateZh: "翻译成中文",
-      translateRu: "翻译成俄文",
       fixPunc: "标点/排版修复",
       aiTab: "AI 智能中心",
       aiTags: "文档标签",
