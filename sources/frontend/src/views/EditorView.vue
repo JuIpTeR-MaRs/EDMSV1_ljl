@@ -152,7 +152,19 @@
       <el-button size="small" @click="insertCustomTable">{{ t("editor.toolbar.table") }}</el-button>
       <el-button size="small" type="success" plain @click="importDocx">{{ t("editor.toolbar.importDocx") }}</el-button>
       <el-button size="small" type="info" plain @click="searchVisible = !searchVisible">{{ t("editor.toolbar.findReplace") }}</el-button>
-      <el-button size="small" type="warning" plain @click="runContractProofread" :loading="proofreading">合同校对</el-button>
+      <el-dropdown trigger="click" style="margin-left: 8px; margin-right: 8px;">
+        <el-button size="small" type="primary" plain>
+          <el-icon style="margin-right: 4px;"><MagicStick /></el-icon> AI功能
+          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="runContractProofread" :disabled="proofreading">合同校对</el-dropdown-item>
+            <el-dropdown-item @click="runLogicCheck" :disabled="checkingLogic">逻辑检查</el-dropdown-item>
+            <el-dropdown-item @click="runPunctuationCheck" :disabled="checkingPunctuation">标点检查</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       
       <el-button-group class="toolbar-group" v-if="editor && editor.isActive('table')">
         <el-button size="small" @click="editor.chain().focus().addRowBefore().run()">{{ t("editor.toolbar.addRowBefore") }}</el-button>
@@ -632,30 +644,35 @@ const statusLabel = computed(() => {
 
 const isVerifying = ref(false);
 
-const handleBlockchainVerify = async () => {
+const handleBlockchainVerify = async (silentSuccess = false) => {
+  if (silentSuccess instanceof Event) {
+    silentSuccess = false;
+  }
   isVerifying.value = true;
   try {
     const res = await api.get(`/documents/${docId.value}/verify`);
     
     if (res.data.safe) {
-      ElNotification({
-        title: t('editor.blockchainPassed'),
-        message: `
-          <div style="margin-top: 5px;">
-            <p style="color: #67C23A; font-weight: bold; margin-bottom: 8px; display:flex; align-items:center; gap:4px">
-              <span style="font-size: 16px;">✔</span> ${t('editor.blockchainVerified')}
-            </p>
-            <div style="padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px;">
-              <p style="font-size: 12px; color: #909399; margin: 0; word-break: break-all;">
-                <b>${t('editor.blockchainTxHash')}:</b><br/>${res.data.tx_hash}
+      if (!silentSuccess) {
+        ElNotification({
+          title: t('editor.blockchainPassed'),
+          message: `
+            <div style="margin-top: 5px;">
+              <p style="color: #67C23A; font-weight: bold; margin-bottom: 8px; display:flex; align-items:center; gap:4px">
+                <span style="font-size: 16px;">✔</span> ${t('editor.blockchainVerified')}
               </p>
+              <div style="padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px;">
+                <p style="font-size: 12px; color: #909399; margin: 0; word-break: break-all;">
+                  <b>${t('editor.blockchainTxHash')}:</b><br/>${res.data.tx_hash}
+                </p>
+              </div>
             </div>
-          </div>
-        `,
-        dangerouslyUseHTMLString: true,
-        type: 'success',
-        duration: 5000
-      });
+          `,
+          dangerouslyUseHTMLString: true,
+          type: 'success',
+          duration: 5000
+        });
+      }
     } else {
       ElNotification({
         title: t('editor.blockchainTamperAlert'),
@@ -1168,6 +1185,68 @@ async function runContractProofread() {
   }
 }
 
+const checkingPunctuation = ref(false);
+async function runPunctuationCheck() {
+  if (!editor.value) return;
+  const text = editor.value.getText();
+  if (!text.trim()) {
+    ElMessage.warning("文档内容为空，无法进行检查。");
+    return;
+  }
+  
+  if (isSideCollapsed.value) {
+    toggleSideCollapse();
+  }
+  activeSideTab.value = "ai";
+  
+  checkingPunctuation.value = true;
+  aiStore.addMessage('editor', 'user', "正在对当前文档进行标点符号检查...");
+  
+  const aiMsg: any = { role: 'ai', content: "", action: undefined };
+  aiStore.editorMessages.push(aiMsg);
+  askingCount.value++;
+  scrollToBottom(true);
+  
+  try {
+    const response = await fetch('/api/ai/generate', {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${auth.token}` },
+      body: JSON.stringify({ action: "punctuation_check", prompt: "请帮我检查并纠正以下文本中的标点符号使用错误。如果有任何不符合中文或英文标点规范的地方，请列出修改建议，最后给出修正后的文本。\n\n" + text.slice(0, 5000), lang: locale.value, ai_model: aiStore.selectedModel })
+    });
+    
+    if (!response.ok) throw new Error("API request failed");
+    
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = new TextDecoder().decode(value);
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") break;
+          try {
+            const data = JSON.parse(raw);
+            if (data.type === 'chunk' && data.content) {
+              aiMsg.content += data.content;
+              scrollToBottom();
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Punctuation check failed:", err);
+    aiMsg.content += "\n⚠️ 标点检查失败。";
+  } finally {
+    checkingPunctuation.value = false;
+    askingCount.value = Math.max(0, askingCount.value - 1);
+  }
+}
+
 async function askAi(isFeedback = false) {
   if (!isFeedback && (!aiQuery.value.trim() || asking.value || !editor.value)) return;
   
@@ -1302,7 +1381,7 @@ async function askAi(isFeedback = false) {
                     aiMsg.content = tempMsg + (resultHtml || "");
                     
                     // 💡 Feed back to AI
-                    if (resultHtml) {
+                    if (resultHtml && !aiMsg.action) {
                       aiStore.addMessage('editor', 'user', `[系统反馈]:\n${resultHtml}`, null, true);
                       askAi(true);
                     }
@@ -1785,6 +1864,7 @@ async function loadDoc(silent = false) {
     }, 500);
 
     if (meta.value.status !== 'approved') refreshCollabList();
+    handleBlockchainVerify(true).catch(e => console.error("Auto verify failed", e));
   } catch (err) {
     console.error("[DEBUG] loadDoc CRITICAL ERROR:", err);
   } finally {

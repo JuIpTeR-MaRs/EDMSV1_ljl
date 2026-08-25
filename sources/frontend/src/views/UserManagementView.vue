@@ -416,6 +416,7 @@ async function createDept() {
     deptDialogVisible.value = false;
     newDeptName.value = "";
     newDeptNameEn.value = "";
+    loadDepts();
   } catch (err: any) {
     ElMessage.error(err.response?.data?.error || t('common.failed'));
   } finally {

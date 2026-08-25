@@ -16,8 +16,13 @@ export const useAuthStore = defineStore("auth", () => {
     else sessionStorage.removeItem("edms_token");
   }
 
-  async function login(loginName: string, password?: string) {
-    const { data } = await api.post("/auth/login", { login_name: loginName, password });
+  async function login(loginName: string, password?: string, captchaAnswer?: string, captchaToken?: string) {
+    const { data } = await api.post("/auth/login", { 
+      login_name: loginName, 
+      password,
+      captcha_answer: captchaAnswer,
+      captcha_token: captchaToken
+    });
     setToken(data.access_token);
     user.value = data.user;
     applyThemeByRole();

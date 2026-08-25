@@ -17,7 +17,24 @@ def create_app(config_class=Config):
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
     
-    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+    # [SECURITY - CORS HARDENING] Use explicit allowed origins from environment variable.
+    # Wildcard "*" with supports_credentials=True is insecure. In production, set
+    # CORS_ALLOWED_ORIGINS env var to the exact frontend URL, e.g.:
+    #   CORS_ALLOWED_ORIGINS=https://yourdomain.com
+    # Multiple origins can be separated by commas.
+    import os as _os
+    _raw_origins = _os.environ.get("CORS_ALLOWED_ORIGINS", "")
+    if _raw_origins:
+        _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    else:
+        # Development fallback: allow localhost origins only
+        _allowed_origins = [
+            "http://localhost:5173",
+            "https://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+        ]
+    CORS(app, resources={r"/api/*": {"origins": _allowed_origins}}, supports_credentials=True)
 
     db.init_app(app)
     jwt.init_app(app)
@@ -175,7 +192,9 @@ def create_app(config_class=Config):
         import traceback
         print("[Global Error Handler] 500 Internal Server Error:")
         traceback.print_exc()
-        return {"error": "Internal Server Error", "message": str(e)}, 500
+        # [SECURITY - VULN-08 FIX] Do not expose internal exception details to clients.
+        # The full traceback is logged server-side for debugging.
+        return {"error": "Internal Server Error"}, 500
 
     @app.errorhandler(Exception)
     def handle_exception(e):
@@ -186,7 +205,9 @@ def create_app(config_class=Config):
         import traceback
         print("[Global Error Handler] Unhandled Exception:")
         traceback.print_exc()
-        return {"error": str(e)}, 500
+        # [SECURITY - VULN-08 FIX] Do not expose internal exception details to clients.
+        # Return a generic message; the full error is logged server-side.
+        return {"error": "Internal Server Error"}, 500
 
     @app.route("/api/health")
     def health_check():
@@ -308,10 +329,15 @@ def create_app(config_class=Config):
                         is_super_admin=True,
                         registration_status='active'
                     )
-                    admin.set_password('123456')
+                    # [SECURITY] Default admin password - MUST be changed immediately after first login.
+                    # Change via: PUT /api/auth/change-password or the Users management page.
+                    _default_admin_password = 'Admin@EDMS2024!'
+                    admin.set_password(_default_admin_password)
                     db.session.add(admin)
                     db.session.commit()
                     print("[Bootstrap] Admin user created.")
+                    print(f"[Bootstrap] ⚠️  SECURITY WARNING: Default admin password is set. "
+                          f"Please change it immediately after first login!")
                 else:
                     # 确保已有 admin 账户拥有管理权限和激活状态
                     needs_update = False

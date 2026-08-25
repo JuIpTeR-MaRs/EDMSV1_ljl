@@ -1550,6 +1550,14 @@ def verify_document(doc_id):
     
     time.sleep(0.8) # 模拟正在全网广播查询的延迟
     
+    # 如果还没上链，直接认为是安全的未上链状态
+    if not doc.file_hash:
+        return jsonify({
+            "safe": True,
+            "msg": "文档尚未上链存证",
+            "tx_hash": "N/A"
+        })
+
     # 核心拦截逻辑：拿现在的哈希 vs 归档时存的哈希
     if current_hash == doc.file_hash:
         return jsonify({

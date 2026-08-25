@@ -169,10 +169,21 @@ def blame_html(versions_data: list[dict[str, Any]]) -> str:
         sm = difflib.SequenceMatcher(None, prev_fingerprints, v_fingerprints)
         for tag, i1, i2, j1, j2 in sm.get_opcodes():
             if tag == "equal":
-                # Content is identical to previous version, preserve original attribution
+                # Blocks are identical – preserve original attribution
                 new_blame.extend(current_blame[i1:i2])
-            else:
-                # Content changed or added, attribute to current version's author
+            elif tag == "delete":
+                # Blocks removed in this version – drop them entirely (no entry added)
+                pass
+            elif tag == "insert":
+                # New blocks added by this version's author
+                for idx in range(j1, j2):
+                    new_blame.append({
+                        "fingerprint": v_fingerprints[idx],
+                        "author": v.get("author_name", "Unknown"),
+                        "color": v.get("author_color", "#888")
+                    })
+            elif tag == "replace":
+                # Old blocks replaced by new blocks – attribute replacements to this version's author
                 for idx in range(j1, j2):
                     new_blame.append({
                         "fingerprint": v_fingerprints[idx],
@@ -181,23 +192,23 @@ def blame_html(versions_data: list[dict[str, Any]]) -> str:
                     })
         current_blame = new_blame
 
+    # --- Safety alignment ---
+    # current_blame must correspond 1-to-1 with latest_content.
+    # If sizes differ (e.g. due to a content_json inconsistency), cap to the shorter.
+    aligned_len = min(len(current_blame), len(latest_content))
+
     # --- Grouping into Modules ---
     # Merge consecutive blocks with the same author
     modules = []
-    if current_blame:
-        # Note: We must ensure we align with latest_content exactly
-        # current_blame size should match latest_content because it was derived from versions[-1] in the last loop
-        
-        # Start the first module
-        first_info = current_blame[0] if len(current_blame) > 0 else {"author": "Unknown", "color": "#888"}
+    if aligned_len > 0:
         curr_mod = {
-            "author": first_info["author"],
-            "color": first_info["color"],
+            "author": current_blame[0]["author"],
+            "color": current_blame[0]["color"],
             "nodes": [latest_content[0]]
         }
         
-        for i in range(1, len(latest_content)):
-            info = current_blame[i] if i < len(current_blame) else {"author": "Unknown", "color": "#888"}
+        for i in range(1, aligned_len):
+            info = current_blame[i]
             if info["author"] == curr_mod["author"]:
                 curr_mod["nodes"].append(latest_content[i])
             else:

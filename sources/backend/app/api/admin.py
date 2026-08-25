@@ -1,6 +1,6 @@
-"""Admin endpoints for master data import (requires manager authentication)."""
+"""Admin endpoints for master data import (requires super admin authentication)."""
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import verify_jwt_in_request
+from flask_jwt_extended import jwt_required
 
 from app.extensions import db
 from app.models import User
@@ -10,14 +10,12 @@ from app.utils.auth import current_user
 bp = Blueprint("admin", __name__)
 
 
-def _has_managers() -> bool:
-    return db.session.query(User.id).filter(User.is_manager == True).first() is not None
 
 
 @bp.get("/status")
 def admin_status():
     """Whether DB has managers (for UI hints)."""
-    has_users = _has_managers()
+    has_users = db.session.query(User.id).filter(User.is_manager == True).first() is not None
     sample_managers = []
     if has_users:
         sample_managers = [
@@ -37,28 +35,23 @@ def admin_status():
 
 
 @bp.post("/master-data/import")
+@jwt_required()
 def admin_import_master_data():
-    """Import XLSX (clears or appends documents and master data)."""
-    # 💡 增加：请求诊断日志
+    """Import XLSX (clears or appends documents and master data). Requires super admin authentication.
+
+    [SECURITY - VULN-01 FIX] Previously, this endpoint skipped authentication entirely when
+    no managers existed in the database (has_managers() == False), allowing unauthenticated
+    users to overwrite all master data. This has been fixed to always require JWT + super admin.
+    """
     print(f"[DEBUG] Import request received. Content-Type: {request.content_type}")
     print(f"[DEBUG] Files in request: {list(request.files.keys())}")
-    
-    # Check if there are any managers in the database
-    has_managers = _has_managers()
-    
-    if has_managers:
-        try:
-            verify_jwt_in_request()
-            user = current_user()
-            # 💡 优化：仅允许超级管理员（login_name 为 admin）进行 Excel 全量导入
-            if not user or not user.is_super_admin:
-                return jsonify({
-                    "error": "Access denied. Only the super admin can import master data via Excel."
-                }), 403
-        except Exception:
-            return jsonify({
-                "error": "Authorization required. Please sign in as a manager to import master data."
-            }), 403
+
+    # Always enforce super admin authentication — no bypass allowed
+    user = current_user()
+    if not user or not user.is_super_admin:
+        return jsonify({
+            "error": "Access denied. Only the super admin can import master data via Excel."
+        }), 403
 
     if "file" not in request.files:
         print("[DEBUG] 400 ERROR: 'file' key missing in request.files")
@@ -98,6 +91,7 @@ def admin_import_master_data():
         stats["sample_login_names"] = []
 
     return jsonify(stats), 200
+
 
 
 from app.models.workflow import AuditLog

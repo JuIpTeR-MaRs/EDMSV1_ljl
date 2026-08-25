@@ -350,7 +350,7 @@ def import_master_data_xlsx(file_bytes: bytes, overwrite: bool = True, table_typ
     def flush_all():
         """Clear business + master data so user FKs can be recreated. PROTECT ADMIN."""
         from sqlalchemy import delete, select
-        print("[IMPORT] FLUSH_ALL: Clearing all business and master data tables (Protecting Admin)...")
+        
         db.session.execute(delete(ApprovalDecision))
         db.session.execute(delete(ApprovalParticipant))
         db.session.execute(delete(ApprovalFlow))
@@ -365,6 +365,11 @@ def import_master_data_xlsx(file_bytes: bytes, overwrite: bool = True, table_typ
         # 保护 admin 用户，删除其他所有用户
         db.session.execute(delete(User).where(User.is_super_admin == False))
         
+        # 强制清除所有用户的部门绑定（防止删除部门时的外键约束冲突）
+        db.session.execute(db.update(User).values(department_id=None))
+        db.session.flush()
+        db.session.expire_all()
+            
         db.session.execute(delete(Position))
         db.session.execute(delete(Department))
         
@@ -492,6 +497,15 @@ def import_master_data_xlsx(file_bytes: bytes, overwrite: bool = True, table_typ
 
     db.session.flush()
     print("[IMPORT] Database flushed.")
+
+    # 重新将 admin 用户关联到一个默认部门（取新导入的第一个部门），避免 department_id 为空
+    admin_user = db.session.query(User).filter_by(is_super_admin=True).first()
+    if admin_user and admin_user.department_id is None:
+        first_dept = db.session.query(Department).first()
+        if first_dept:
+            admin_user.department_id = first_dept.id
+            db.session.flush()
+            print(f"[IMPORT] Re-associated admin with department: {first_dept.name}")
 
     # Initialize standard templates after users are created
     admin_user = db.session.query(User).filter_by(is_super_admin=True).first() or db.session.query(User).first()

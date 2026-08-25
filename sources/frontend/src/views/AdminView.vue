@@ -85,7 +85,10 @@ const base = import.meta.env.VITE_API_BASE || "/api";
 
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {};
-  const tok = localStorage.getItem("edms_token");
+  // [SECURITY - VULN-09 FIX] Read token from sessionStorage to match the auth store.
+  // Previously read from localStorage which is inconsistent with stores/auth.ts (uses sessionStorage),
+  // causing admin API requests to fail silently without an Authorization header.
+  const tok = sessionStorage.getItem("edms_token");
   if (tok) h.Authorization = `Bearer ${tok}`;
   return h;
 }

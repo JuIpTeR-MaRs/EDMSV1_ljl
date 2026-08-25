@@ -5,15 +5,17 @@ from app import create_app
 from app.extensions import db
 
 
+from app.config import Config
+
+class TestConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL_TEST", "mysql+pymysql://root:84916325@127.0.0.1:3306/edms_db_test")
+    JWT_SECRET_KEY = "test-jwt"
+    SECRET_KEY = "test-secret"
+
 @pytest.fixture()
 def app():
-    app = create_app()
-    app.config.update(
-        TESTING=True,
-        SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL_TEST", "mysql+pymysql://root:84916325@127.0.0.1:3306/edms_db_test"),
-        JWT_SECRET_KEY="test-jwt",
-        SECRET_KEY="test-secret",
-    )
+    app = create_app(TestConfig)
     uri = app.config["SQLALCHEMY_DATABASE_URI"]
     import re
     from sqlalchemy import create_engine, text

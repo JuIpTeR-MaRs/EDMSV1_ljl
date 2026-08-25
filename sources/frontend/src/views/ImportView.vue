@@ -132,12 +132,16 @@ async function upload() {
   fd.append("overwrite", String(overwrite.value));
   fd.append("table_type", importType.value);
   try {
-    const { data } = await api.post("/admin/master-data/import", fd);
+    const { data } = await api.post("/admin/master-data/import", fd, {
+      headers: {
+        "Content-Type": "multipart/form-data"
+      }
+    });
     result.value = data;
     ElMessage.success(t("import.success"));
-  } catch (e: unknown) {
+  } catch (e: any) {
     ElMessage.error(t("import.failed"));
-    result.value = e;
+    result.value = e.response?.data || e.message || e;
     isError.value = true;
   } finally {
     loading.value = false;

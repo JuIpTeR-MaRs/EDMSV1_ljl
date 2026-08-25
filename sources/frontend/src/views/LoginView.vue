@@ -81,6 +81,22 @@
                   />
                 </el-form-item>
 
+                <el-form-item>
+                  <div class="captcha-wrapper">
+                    <el-input 
+                      v-model="captchaAnswer" 
+                      :placeholder="t('login.captchaPlaceholder')" 
+                      :prefix-icon="Finished"
+                      size="large"
+                      class="captcha-input"
+                    />
+                    <div class="captcha-img-container" @click="fetchCaptcha" :title="t('common.refresh', '点击刷新')">
+                      <img v-if="captchaImg" :src="captchaImg" alt="Captcha" class="captcha-img" />
+                      <span v-else class="captcha-loading">...</span>
+                    </div>
+                  </div>
+                </el-form-item>
+
                 <div class="form-utils">
                   <el-checkbox v-model="rememberMe">{{ t('login.rememberMe') }}</el-checkbox>
                   <el-link class="purple-link" :underline="false">{{ t('login.forgotPassword') }}</el-link>
@@ -209,6 +225,9 @@ const loginName = ref("");
 const password = ref("");
 const rememberMe = ref(false);
 const loading = ref(false);
+const captchaImg = ref("");
+const captchaToken = ref("");
+const captchaAnswer = ref("");
 
 const mode = ref('login');
 
@@ -272,7 +291,19 @@ const features = computed(() => [
   }
 ]);
 
+async function fetchCaptcha() {
+  try {
+    const { data } = await api.get('/auth/captcha');
+    captchaImg.value = data.captcha_img;
+    captchaToken.value = data.captcha_token;
+    captchaAnswer.value = "";
+  } catch (err) {
+    console.error("Failed to fetch captcha", err);
+  }
+}
+
 onMounted(async () => {
+  fetchCaptcha();
   try {
     const { data } = await api.get('/users/departments');
     departments.value = data;
@@ -284,13 +315,38 @@ async function submit() {
     ElMessage.warning(t("common.requiredFields"));
     return;
   }
+  if (!captchaAnswer.value) {
+    ElMessage.warning(t("login.captchaRequired"));
+    return;
+  }
   loading.value = true;
   try {
-    await auth.login(loginName.value.trim(), password.value);
+    await auth.login(
+      loginName.value.trim(), 
+      password.value, 
+      captchaAnswer.value.trim(), 
+      captchaToken.value
+    );
     const r = (route.query.redirect as string) || "/";
     router.replace(r);
-  } catch (err) {
-    ElMessage.error(t("login.invalid"));
+  } catch (err: any) {
+    const errMsg = err.response?.data?.error;
+    if (errMsg === 'captcha_required') {
+      ElMessage.error(t("login.captchaRequired"));
+    } else if (errMsg === 'captcha_invalid') {
+      ElMessage.error(t("login.captchaErr"));
+      fetchCaptcha();
+    } else if (errMsg === 'captcha_expired') {
+      ElMessage.error(t("login.captchaExpired"));
+      fetchCaptcha();
+    } else {
+      if (err.response?.status === 403 && errMsg) {
+        ElMessage.error(errMsg);
+      } else {
+        ElMessage.error(t("login.invalid"));
+      }
+      fetchCaptcha();
+    }
   } finally {
     loading.value = false;
   }
@@ -767,6 +823,50 @@ async function handleRegister() {
 
 .register-section :deep(.el-form-item) {
   margin-bottom: 22px;
+}
+
+.captcha-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.captcha-input {
+  flex: 1;
+}
+
+.captcha-img-container {
+  width: 120px;
+  height: 38px;
+  cursor: pointer;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #ede9fe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ddd6fe;
+  transition: all 0.3s ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.captcha-img-container:hover {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.15);
+}
+
+.captcha-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.captcha-loading {
+  font-size: 14px;
+  color: #8b5cf6;
+  font-weight: bold;
 }
 
 /* Responsive */

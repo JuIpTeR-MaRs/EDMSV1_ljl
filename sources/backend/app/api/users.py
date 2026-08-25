@@ -262,11 +262,19 @@ def update_user(user_id: int):
         
     # Fields ONLY admin can change
     if is_admin:
-        # 💡 限制：仅超级管理员（admin）可以修改员工所属部门
-        if is_super and "department_id" in data: 
-            target_user.department_id = data["department_id"]
-        
-        if "is_manager" in data: target_user.is_manager = data["is_manager"]
+        # [SECURITY - VULN-07 FIX] Only super admins can change is_manager or is_super_admin.
+        # Previously any department manager could elevate any user in their dept to manager,
+        # allowing unlimited privilege escalation. Now restricted to super admins only.
+        if is_super:
+            if "department_id" in data:
+                target_user.department_id = data["department_id"]
+            if "is_manager" in data:
+                target_user.is_manager = data["is_manager"]
+            if "is_super_admin" in data:
+                if is_self and not data["is_super_admin"]:
+                    return jsonify({"error": "Cannot revoke your own super admin rights"}), 400
+                target_user.is_super_admin = bool(data["is_super_admin"])
+
         if "position_short" in data: target_user.position_short = data["position_short"]
         if "login_name" in data:
             new_login = data["login_name"].strip()
@@ -276,11 +284,6 @@ def update_user(user_id: int):
             if existing and existing.id != target_user.id:
                 return jsonify({"error": "Login name already exists"}), 409
             target_user.login_name = new_login
-        if "is_super_admin" in data:
-            if is_self and not data["is_super_admin"]:
-                return jsonify({"error": "Cannot revoke your own super admin rights"}), 400
-            if is_super:
-                target_user.is_super_admin = bool(data["is_super_admin"])
 
     try:
         db.session.commit()

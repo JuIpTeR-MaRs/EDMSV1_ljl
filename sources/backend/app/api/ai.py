@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, Response, stream_with_context
 from flask_jwt_extended import jwt_required
 from app.services.ai_service import AIService
 from app.utils.auth import current_user
+from app.services.document_access import user_can_view_document
 import json
 import os
 from datetime import datetime
@@ -254,20 +255,36 @@ def cross_document_qa():
     
     if not doc_ids or not query:
         return jsonify({"error": "Missing doc_ids or query"}), 400
-        
+
+    # [SECURITY - VULN-02 FIX] Verify the current user has view access to every requested document.
+    # Previously there was no permission check, allowing any authenticated user to read
+    # the content of arbitrary documents by enumerating doc_ids (IDOR vulnerability).
+    user = current_user()
+    from app.models import Document
+    from app.extensions import db as _db
+    authorized_doc_ids = []
+    for did in doc_ids:
+        doc = _db.session.get(Document, did)
+        if doc and user_can_view_document(user, doc):
+            authorized_doc_ids.append(did)
+        # Silently skip documents user cannot view (don't leak existence via error)
+    
+    if not authorized_doc_ids:
+        return jsonify({"error": "No accessible documents found in the provided list."}), 403
+
     from app.services.vector_store import search_documents
     
     # 1. 尝试使用向量搜索 (Semantic Search) + 增大 Top-K 确保历史数据覆盖
-    contexts = search_documents(query, doc_ids=doc_ids, limit=20)
+    contexts = search_documents(query, doc_ids=authorized_doc_ids, limit=20)
     
     # 2. 兜底策略：如果向量数据库没有返回结果，则直接从 MySQL 提取文档原文
     if not contexts:
-        print(f"[AI QA] 向量搜索未返回结果 (Docs: {doc_ids})，正在尝试从数据库直接提取内容...")
+        print(f"[AI QA] 向量搜索未返回结果 (Docs: {authorized_doc_ids})，正在尝试从数据库直接提取内容...")
         from app.models import Document
         from app.utils.text import extract_text_from_tiptap
         from app.extensions import db
         
-        for did in doc_ids:
+        for did in authorized_doc_ids:
             doc = db.session.get(Document, did)
             if doc and doc.current_version:
                 text = ""
@@ -348,6 +365,12 @@ def check_logic():
     doc = Document.get_by_id_or_number(doc_id)
     if not doc or not doc.current_version:
         return jsonify({"error": "Document not found"}), 404
+
+    # [SECURITY - VULN-02 FIX] Verify the current user has view access to this document.
+    # Previously any authenticated user could check the logic of any document by ID (IDOR).
+    user = current_user()
+    if not user_can_view_document(user, doc):
+        return jsonify({"error": "Document not found"}), 404  # Use 404 to avoid leaking document existence
         
     ver = doc.current_version
     text_content = ""
