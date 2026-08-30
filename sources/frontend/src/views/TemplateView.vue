@@ -41,16 +41,22 @@
         v-for="item in filteredItems"
         :key="item.id"
         class="template-card"
+        :class="{ 'is-lowcode-card': item.is_low_code }"
         @click="useTemplate(item)"
         :id="`template-card-${item.id}`"
       >
         <!-- Card accent ribbon -->
-        <div class="card-ribbon" />
+        <div class="card-ribbon" :class="{ 'lowcode-ribbon': item.is_low_code }" />
 
         <div class="card-body">
-          <!-- Icon -->
-          <div class="card-icon-wrap">
-            <el-icon class="card-icon-el"><component :is="getIconComponent(item.icon)" /></el-icon>
+          <!-- Icon & Mode Tag -->
+          <div class="card-top-row">
+            <div class="card-icon-wrap" :class="{ 'lowcode-icon-wrap': item.is_low_code }">
+              <el-icon class="card-icon-el"><component :is="getIconComponent(item.icon)" /></el-icon>
+            </div>
+            <el-tag v-if="item.is_low_code" size="small" type="success" effect="light" class="lowcode-pill">
+              🎨 零代码表单
+            </el-tag>
           </div>
 
           <!-- Text -->
@@ -67,13 +73,19 @@
 
         <!-- Use CTA -->
         <div class="card-footer">
-          <span class="use-btn">
-            <el-icon><DocumentAdd /></el-icon>
-            {{ t('templates.useTemplate', 'Use Template') }}
+          <span class="use-btn" :class="{ 'lowcode-use-btn': item.is_low_code }">
+            <el-icon><component :is="item.is_low_code ? Tickets : DocumentAdd" /></el-icon>
+            {{ item.is_low_code ? t('lowcode.fillFormAction', '填写表单并生成') : t('templates.useTemplate', '使用模板') }}
           </span>
         </div>
       </div>
     </div>
+
+    <!-- Low-Code Form Runtime Modal -->
+    <LowCodeFormRuntimeDialog
+      v-model="runtimeDialogVisible"
+      :template-data="activeTemplate"
+    />
   </div>
 </template>
 
@@ -82,6 +94,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import api from '@/api/client';
+import LowCodeFormRuntimeDialog from '@/components/LowCodeFormRuntimeDialog.vue';
 import {
   CopyDocument, Search, User, DocumentAdd,
   Document, Tickets, DataAnalysis, Calendar, Money,
@@ -95,6 +108,9 @@ const router = useRouter();
 const loading = ref(false);
 const items = ref<any[]>([]);
 const searchQuery = ref('');
+
+const runtimeDialogVisible = ref(false);
+const activeTemplate = ref<any>(null);
 
 const ICON_COMPONENTS: Record<string, any> = {
   Document, Tickets, Files, Folder, Memo, Postcard, Collection,
@@ -119,7 +135,7 @@ async function loadData() {
   loading.value = true;
   try {
     const { data } = await api.get('/templates');
-    items.value = data.items;
+    items.value = data.items || [];
   } catch (err) {
     ElMessage.error(t('common.failed', 'Failed to load templates'));
   } finally {
@@ -128,6 +144,12 @@ async function loadData() {
 }
 
 async function useTemplate(item: any) {
+  if (item.is_low_code) {
+    activeTemplate.value = item;
+    runtimeDialogVisible.value = true;
+    return;
+  }
+
   loading.value = true;
   try {
     const { data } = await api.post(`/templates/${item.id}/create-from`);
@@ -140,18 +162,14 @@ async function useTemplate(item: any) {
   }
 }
 
-onMounted(() => {
-  loadData();
-});
+onMounted(loadData);
 </script>
 
 <style scoped>
-/* ── Page wrapper ────────────────────────────────────────────── */
 .page-wrapper {
   padding: 0 0 40px;
 }
 
-/* ── Hero Header ─────────────────────────────────────────────── */
 .hero-header {
   display: flex;
   align-items: center;
@@ -161,7 +179,6 @@ onMounted(() => {
   background: linear-gradient(135deg, var(--el-color-primary) 0%, #7367f0 130%) !important;
   border-radius: 16px;
   margin-bottom: 24px;
-  flex-wrap: wrap;
   box-shadow: 0 8px 24px rgba(16, 185, 129, 0.15);
 }
 
@@ -194,143 +211,146 @@ onMounted(() => {
   color: rgba(255,255,255,0.8) !important;
 }
 
-/* ── Toolbar ─────────────────────────────────────────────────── */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
   margin-bottom: 24px;
+  gap: 12px;
 }
 
 .search-input {
-  max-width: 320px;
+  width: 280px;
 }
 
 .count-tag {
-  font-size: 13px;
-  border-radius: 20px;
+  font-size: 12px;
 }
 
-/* ── Template Grid ───────────────────────────────────────────── */
+.gallery-empty {
+  margin-top: 60px;
+}
+
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
 }
 
-/* ── Single Card ─────────────────────────────────────────────── */
 .template-card {
-  cursor: pointer;
-  background: var(--edms-card-bg);
-  border: 1px solid rgba(156, 163, 175, 0.12);
-  border-radius: 16px;
-  box-shadow: var(--edms-shadow);
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1),
-              box-shadow 0.28s cubic-bezier(0.4,0,0.2,1),
-              border-color 0.28s ease;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
 .template-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 16px 36px -8px rgba(0,0,0,0.14), 0 4px 12px rgba(0,0,0,0.06);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.08);
   border-color: var(--el-color-primary);
 }
 
 .card-ribbon {
   height: 4px;
-  background: linear-gradient(90deg, var(--el-color-primary), color-mix(in srgb, var(--el-color-primary) 60%, #7367f0 40%));
+  background: linear-gradient(90deg, var(--el-color-primary), #6ee7b7);
+}
+
+.card-ribbon.lowcode-ribbon {
+  background: linear-gradient(90deg, var(--el-color-primary), #6ee7b7);
 }
 
 .card-body {
-  padding: 20px 20px 12px;
+  padding: 20px 20px 16px;
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+}
+
+.card-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
 .card-icon-wrap {
-  width: 60px; height: 60px;
-  border-radius: 14px;
-  background: var(--el-color-primary-light-9);
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #fffbeb;
   color: var(--el-color-primary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 28px;
-  margin-bottom: 14px;
-  transition: background 0.3s, color 0.3s, transform 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  transition: all 0.2s;
+}
+
+.card-icon-wrap.lowcode-icon-wrap {
+  background: #fffbeb;
+  color: var(--el-color-primary);
 }
 
 .template-card:hover .card-icon-wrap {
   background: var(--el-color-primary);
   color: #fff;
-  transform: scale(1.1) rotate(-3deg);
 }
 
 .card-title {
   margin: 0 0 8px;
   font-size: 15px;
   font-weight: 700;
-  color: var(--el-text-color-primary);
-  line-height: 1.3;
+  color: #0f172a;
 }
 
 .card-desc {
-  margin: 0 0 14px;
-  font-size: 12.5px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.55;
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
   flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
+  align-items: center;
+  gap: 8px;
 }
 
-.meta-tag {
-  border-radius: 20px;
-  font-size: 11px;
-}
-
-/* ── Card Footer CTA ─────────────────────────────────────────── */
 .card-footer {
   padding: 12px 20px;
-  border-top: 1px solid rgba(156,163,175,0.1);
+  border-top: 1px solid #f1f5f9;
+  background: #fafafa;
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .use-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   color: var(--el-color-primary);
-  transition: gap 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+
+.use-btn.lowcode-use-btn {
+  color: var(--el-color-primary);
 }
 
 .template-card:hover .use-btn {
-  gap: 10px;
-}
-
-/* ── Empty State ─────────────────────────────────────────────── */
-.gallery-empty {
-  margin-top: 48px;
-}
-
-/* ── Admin theme tints ───────────────────────────────────────── */
-html[data-theme='admin'] .card-ribbon {
-  background: linear-gradient(90deg, #4f46e5, #818cf8);
-}
-html[data-theme='manager'] .card-ribbon {
-  background: linear-gradient(90deg, #d97706, #f59e0b);
+  gap: 6px;
 }
 </style>

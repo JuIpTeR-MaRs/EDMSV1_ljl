@@ -61,6 +61,7 @@ def apply_decision(
     decision: str,
     reason: Optional[str],
     document: Optional[Document],
+    target_user_id: Optional[int] = None,
 ) -> None:
     if participant.flow.status != "active":
         raise ValueError("Flow not active")
@@ -92,17 +93,57 @@ def apply_decision(
                 user.registration_status = "rejected"
         return
 
+    if decision == "forward":
+        if not target_user_id:
+            raise ValueError("target_user_id is required for forward decision")
+        target_user = db.session.get(User, target_user_id)
+        if not target_user or target_user.registration_status != "active":
+            raise ValueError("Target user does not exist or is not active")
+        if target_user_id == participant.user_id:
+            raise ValueError("Cannot forward to yourself")
+
+        if flow.flow_type in ("sequential", "registration"):
+            # Shift subsequent participants
+            subsequent_participants = ApprovalParticipant.query.filter(
+                ApprovalParticipant.flow_id == flow.id,
+                ApprovalParticipant.step_order > participant.step_order
+            ).all()
+            for sub_p in subsequent_participants:
+                sub_p.step_order += 1
+
+            next_order = participant.step_order + 1
+            new_participant = ApprovalParticipant(
+                flow_id=flow.id,
+                user_id=target_user_id,
+                step_order=next_order,
+            )
+            db.session.add(new_participant)
+            flow.current_order = next_order
+        else:
+            # Parallel flow
+            new_participant = ApprovalParticipant(
+                flow_id=flow.id,
+                user_id=target_user_id,
+                step_order=participant.step_order,
+            )
+            db.session.add(new_participant)
+
+        if document:
+            document.updated_at = datetime.utcnow()
+        db.session.flush()
+        return
+
     if flow.flow_type == "parallel":
         pending = [p for p in flow.participants if not p.decision]
         if not pending:
-            if all(p.decision and p.decision.decision == "approve" for p in flow.participants):
-                flow.status = "completed"
-                if document:
-                    document.status = "approved"
-            else:
+            if any(p.decision and p.decision.decision == "reject" for p in flow.participants):
                 flow.status = "rejected"
                 if document:
                     document.status = "rejected"
+            else:
+                flow.status = "completed"
+                if document:
+                    document.status = "approved"
         if document:
             document.updated_at = datetime.utcnow()
         return

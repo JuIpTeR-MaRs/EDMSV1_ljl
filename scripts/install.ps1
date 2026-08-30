@@ -7,6 +7,14 @@ Write-Host "             EDMS 项目一键安装/配置脚本" -ForegroundColor 
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host ""
 
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Determine root directory (if script is inside scripts/, parent is root)
+if (Test-Path (Join-Path $scriptDir "..\sources")) {
+    $rootDir = (Get-Item (Join-Path $scriptDir "..")).FullName
+} else {
+    $rootDir = $scriptDir
+}
+
 # 1. 检查运行环境
 Write-Host "[1/4] 检查系统开发环境..." -ForegroundColor Yellow
 
@@ -37,9 +45,8 @@ Write-Host ""
 
 # 2. 自动复制配置文件模版 (.env)
 Write-Host "[2/4] 初始化根目录配置文件 (.env)..." -ForegroundColor Yellow
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$rootEnv = Join-Path $scriptDir ".env"
-$rootEnvEx = Join-Path $scriptDir ".env.example"
+$rootEnv = Join-Path $rootDir ".env"
+$rootEnvEx = Join-Path $rootDir ".env.example"
 
 if (Test-Path $rootEnv) {
     Write-Host " [跳过] 根目录下 .env 已存在，无需复制。" -ForegroundColor Gray
@@ -53,12 +60,20 @@ if (Test-Path $rootEnv) {
 }
 Write-Host ""
 
-# 3. 下载 mkcert.exe (如果不存在)
-Write-Host "[3/4] 检查并下载本地 HTTPS 证书工具 mkcert.exe..." -ForegroundColor Yellow
-$mkcertPath = Join-Path $scriptDir "mkcert.exe"
+# 3. 检查 mkcert.exe (优先在 tools/mkcert/ 中查找)
+Write-Host "[3/4] 检查本地 HTTPS 证书工具 mkcert.exe..." -ForegroundColor Yellow
+$toolsDir = Join-Path $rootDir "tools\mkcert"
+if (-not (Test-Path $toolsDir)) { New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null }
+
+$mkcertPath = Join-Path $toolsDir "mkcert.exe"
+if (-not (Test-Path $mkcertPath)) {
+    if (Test-Path (Join-Path $rootDir "mkcert.exe")) {
+        $mkcertPath = Join-Path $rootDir "mkcert.exe"
+    }
+}
 
 if (Test-Path $mkcertPath) {
-    Write-Host " [跳过] mkcert.exe 已存在，无需下载。" -ForegroundColor Gray
+    Write-Host " [跳过] mkcert.exe 已存在 ($mkcertPath)，无需下载。" -ForegroundColor Gray
 } else {
     Write-Host "正在从 GitHub 下载 mkcert.exe (版本 v1.4.4)..."
     Write-Host "如果直接下载较慢，将自动尝试国内镜像代理..."
@@ -97,7 +112,7 @@ if (Test-Path $mkcertPath) {
             Write-Host " [OK] 镜像 2 下载成功！" -ForegroundColor Green
             $downloaded = $true
         } catch {
-            Write-Error " [错误] 所有下载路径均失败。请手动从 https://github.com/FiloSottile/mkcert/releases 下载 mkcert-v1.4.4-windows-amd64.exe 并重命名为 mkcert.exe 放至项目根目录。"
+            Write-Error " [错误] 所有下载路径均失败。请手动从 https://github.com/FiloSottile/mkcert/releases 下载 mkcert 并放至 tools/mkcert/ 目录。"
             exit 1
         }
     }
@@ -122,15 +137,19 @@ if ($choice -eq 'y' -or $choice -eq 'Y') {
     Start-Process $mkcertPath -ArgumentList "-install" -Verb RunAs -Wait
     
     Write-Host ""
-    Write-Host "正在生成本地 localhost 开发证书，包含 [localhost+2.pem] 和 [localhost+2-key.pem]..." -ForegroundColor Cyan
+    Write-Host "正在生成本地 localhost 开发证书至 certs/ 目录..." -ForegroundColor Cyan
     
-    # 在当前目录生成证书
-    Set-Location $scriptDir
+    $certsDir = Join-Path $rootDir "certs"
+    if (-not (Test-Path $certsDir)) { New-Item -ItemType Directory -Force -Path $certsDir | Out-Null }
+    
+    # 在 certs 目录生成证书
+    Set-Location $certsDir
     & $mkcertPath localhost 127.0.0.1 ::1
+    Set-Location $rootDir
     
     Write-Host ""
-    Write-Host " [OK] HTTPS 根证书配置成功！" -ForegroundColor Green
-    Write-Host " [提示] 后续运行 start_manual.bat 或 frontend_start.bat 时将自动启用安全 HTTPS，地址为 https://localhost:5173。" -ForegroundColor Green
+    Write-Host " [OK] HTTPS 根证书配置成功！证书位于 certs/ 目录。" -ForegroundColor Green
+    Write-Host " [提示] 后续运行 start_manual.bat 时将自动启用安全 HTTPS，地址为 https://localhost:5173。" -ForegroundColor Green
 } else {
     Write-Host " [跳过] 已跳过本地 HTTPS 证书安装。项目将默认使用常规 HTTP 模式运行。" -ForegroundColor Gray
 }

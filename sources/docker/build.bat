@@ -119,13 +119,19 @@ mkdir "%CERTS_DIR%" 2>nul
 mkdir "%BIN_CERTS_DIR%" 2>nul
 
 if not exist "%CERTS_DIR%\fullchain.pem" (
-    if exist "%ROOT_DIR%localhost+2.pem" (
+    if exist "%ROOT_DIR%certs\localhost+2.pem" (
+        echo [SSL] Found local development certificates in certs/, copying them...
+        copy "%ROOT_DIR%certs\localhost+2.pem" "%CERTS_DIR%\fullchain.pem" >nul
+        copy "%ROOT_DIR%certs\localhost+2-key.pem" "%CERTS_DIR%\privkey.pem" >nul
+    ) else if exist "%ROOT_DIR%localhost+2.pem" (
         echo [SSL] Found local development certificates in root, copying them...
         copy "%ROOT_DIR%localhost+2.pem" "%CERTS_DIR%\fullchain.pem" >nul
         copy "%ROOT_DIR%localhost+2-key.pem" "%CERTS_DIR%\privkey.pem" >nul
     ) else (
         set "MKCERT_PATH="
-        if exist "%ROOT_DIR%mkcert.exe" (
+        if exist "%ROOT_DIR%tools\mkcert\mkcert.exe" (
+            set "MKCERT_PATH=%ROOT_DIR%tools\mkcert\mkcert.exe"
+        ) else if exist "%ROOT_DIR%mkcert.exe" (
             set "MKCERT_PATH=%ROOT_DIR%mkcert.exe"
         ) else (
             where mkcert >nul 2>nul

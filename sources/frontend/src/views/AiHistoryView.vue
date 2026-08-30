@@ -192,6 +192,7 @@ onMounted(() => {
   background: linear-gradient(135deg, var(--el-color-primary) 0%, #7367f0 130%) !important;
   border-radius: 16px;
   margin-bottom: 24px;
+  flex-wrap: wrap;
   box-shadow: 0 8px 24px rgba(16, 185, 129, 0.15);
 }
 

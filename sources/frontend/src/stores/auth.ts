@@ -4,9 +4,20 @@ import api from "@/api/client";
 
 export const useAuthStore = defineStore("auth", () => {
   const token = ref<string | null>(sessionStorage.getItem("edms_token"));
-  const user = ref<{ id: number; login_name: string; display_name: string; employee_no: string; department_id?: number; is_manager?: boolean; is_super_admin?: boolean } | null>(
-    null,
-  );
+  const user = ref<{
+    id: number;
+    login_name: string;
+    display_name: string;
+    employee_no: string;
+    department_id?: number;
+    is_manager?: boolean;
+    is_super_admin?: boolean;
+    role_id?: number;
+    role_name?: string;
+    role_name_en?: string;
+    role_level?: number;
+    role_code?: string;
+  } | null>(null);
 
   const isAuthenticated = computed(() => !!token.value);
 
@@ -43,9 +54,9 @@ export const useAuthStore = defineStore("auth", () => {
       return;
     }
 
-    if (user.value.is_super_admin) {
+    if (user.value.is_super_admin || (user.value.role_level && user.value.role_level >= 100)) {
       htmlEl.setAttribute("data-theme", "admin");
-    } else if (user.value.is_manager) {
+    } else if (user.value.is_manager || (user.value.role_level && user.value.role_level >= 50)) {
       htmlEl.setAttribute("data-theme", "manager");
     } else {
       htmlEl.removeAttribute("data-theme");

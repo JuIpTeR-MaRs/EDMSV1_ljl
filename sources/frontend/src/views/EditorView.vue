@@ -1,5 +1,15 @@
 <template>
-  <div class="editor-page" v-loading="loading">
+  <div class="editor-view-root">
+    <!-- 🎨 Dedicated Structured Form Application Card View for Low-Code Forms -->
+    <LowCodeFormCardView 
+      v-if="isLowCodeDoc" 
+      :doc-id="docId" 
+      :initial-doc-data="meta"
+      @updated="loadDoc"
+    />
+
+    <!-- 📝 Standard Rich-Text Editor View for Regular Documents -->
+    <div v-else class="editor-page" v-loading="loading">
     <div class="header-bar">
       <div class="header-left">
         <el-input v-model="title" style="width: 240px" :disabled="!meta.can_edit" @blur="saveTitle" />
@@ -33,6 +43,7 @@
         
         <div v-if="meta.can_approve" class="approval-shortcuts" style="display: flex; gap: 8px; margin-right: 12px;">
            <el-button type="success" @click="handleEditorApprove">{{ t("inbox.approve") }}</el-button>
+           <el-button type="warning" plain @click="handleEditorForward">{{ t("inbox.forward") }}</el-button>
            <el-button type="danger" @click="handleEditorReject">{{ t("inbox.reject") }}</el-button>
         </div>
 
@@ -89,6 +100,46 @@
         <div class="dialog-footer">
           <el-button @click="rejectDlg = false">{{ t("inbox.cancel") }}</el-button>
           <el-button type="danger" @click="confirmEditorReject">{{ t("inbox.reject") }}</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- Forward Dialog for Editor -->
+    <el-dialog v-model="forwardDlg" :title="t('inbox.forwardTitle')" width="480px" destroy-on-close>
+      <div style="margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 13px;">
+        在同意当前审批的基础上，将该审批单流转给指定人员继续审核。
+      </div>
+      <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+        <el-select v-model="selectedDeptId" clearable :placeholder="t('profile.dept', '部门筛选')" style="width: 150px">
+          <el-option v-for="d in deptOptions" :key="d.id" :label="locale === 'en' && d.name_en ? d.name_en : d.name" :value="d.id" />
+        </el-select>
+        <el-select
+          v-model="forwardTargetUserId"
+          filterable
+          :placeholder="t('inbox.selectNextApprover')"
+          style="flex: 1"
+        >
+          <el-option
+            v-for="u in filteredUserOptions"
+            :key="u.id"
+            :label="`${u.display_name || u.login_name}`"
+            :value="u.id"
+          />
+        </el-select>
+      </div>
+      <div style="margin-bottom: 8px; font-size: 13px; font-weight: 500;">{{ t("inbox.forwardReason") }}</div>
+      <el-input
+        v-model="forwardReason"
+        type="textarea"
+        :rows="3"
+        :placeholder="t('inbox.forwardReasonPlaceholder')"
+      />
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="forwardDlg = false">{{ t("inbox.cancel") }}</el-button>
+          <el-button type="primary" :loading="forwardLoading" @click="confirmEditorForward">
+            {{ t("inbox.confirmForward") }}
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -561,12 +612,14 @@
       </template>
     </el-dialog>
   </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ThinkingNineLoader from "@/components/ThinkingNineLoader.vue";
+import LowCodeFormCardView from "@/components/LowCodeFormCardView.vue";
 import { useI18n } from "vue-i18n";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
@@ -652,9 +705,16 @@ const statusLabel = computed(() => {
   return t(`editor.status.${meta.value.status}`) || meta.value.status;
 });
 
+const isLowCodeDoc = computed(() => {
+  return meta.value?.doc_type === 'low_code_form' || 
+         meta.value?.is_low_code || 
+         !!meta.value?.template_schema || 
+         !!meta.value?.form_data;
+});
+
 const isVerifying = ref(false);
 
-const handleBlockchainVerify = async (silentSuccess = false) => {
+const handleBlockchainVerify = async (silentSuccess: any = false) => {
   if (silentSuccess instanceof Event) {
     silentSuccess = false;
   }
@@ -1764,6 +1824,10 @@ async function loadVersions() {
 // Approval logic for approvers opening the doc
 const rejectDlg = ref(false);
 const rejectReason = ref("");
+const forwardDlg = ref(false);
+const forwardReason = ref("");
+const forwardTargetUserId = ref<number | null>(null);
+const forwardLoading = ref(false);
 
 async function handleEditorApprove() {
   try {
@@ -1774,6 +1838,33 @@ async function handleEditorApprove() {
     loadDoc(true);
   } catch (err) {
     ElMessage.error(t("common.failed", "Failed"));
+  }
+}
+
+function handleEditorForward() {
+  forwardReason.value = "";
+  forwardTargetUserId.value = null;
+  forwardDlg.value = true;
+}
+
+async function confirmEditorForward() {
+  if (!forwardTargetUserId.value) {
+    return ElMessage.warning(t("inbox.targetApproverRequired"));
+  }
+  forwardLoading.value = true;
+  try {
+    await api.post(`/approvals/participants/${meta.value.pending_participant_id}/decision`, {
+      decision: "forward",
+      target_user_id: forwardTargetUserId.value,
+      reason: forwardReason.value || undefined
+    });
+    ElMessage.success(t("inbox.forwardSuccess"));
+    forwardDlg.value = false;
+    loadDoc(true);
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || t("common.failed", "Failed"));
+  } finally {
+    forwardLoading.value = false;
   }
 }
 
@@ -1843,10 +1934,11 @@ async function loadDoc(silent = false) {
     } else if (data.content_json) {
       console.log("[DEBUG] Loading content from JSON...");
       const j = typeof data.content_json === "string" ? JSON.parse(data.content_json) : data.content_json;
+      const contentToSet = (j && typeof j === 'object' && (j.markdown || j.html)) ? (j.markdown || j.html) : j;
       // 关键：在协作模式下，需要确保编辑器已就绪且稍作延迟以允许插件初始化
       setTimeout(() => {
         if (editor.value) {
-          editor.value.commands.setContent(j, true); // true means emit update for collab
+          editor.value.commands.setContent(contentToSet, true); // true means emit update for collab
           console.log("[DEBUG] Content set successfully.");
         }
       }, 300);
@@ -2204,6 +2296,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.editor-view-root {
+  width: 100%;
+  min-height: 100%;
+}
+
 .editor-page {
   display: flex;
   flex-direction: column;

@@ -14,7 +14,7 @@
 
     <el-container class="library-layout">
       <el-aside :width="sidebarCollapsed ? '64px' : '280px'" class="tree-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
-        <el-card shadow="sm" class="tree-card" :body-style="{ padding: sidebarCollapsed ? '12px 8px' : '12px 4px' }">
+        <el-card shadow="hover" class="tree-card" :body-style="{ padding: sidebarCollapsed ? '12px 8px' : '12px 4px' }">
           <div class="tree-header">
             <template v-if="!sidebarCollapsed">
               <div class="header-title">
@@ -370,7 +370,7 @@ import DocumentShareDialog from "@/components/DocumentShareDialog.vue";
 import DocumentMoveDialog from "@/components/DocumentMoveDialog.vue";
 import SpaceCreateDialog from "@/components/SpaceCreateDialog.vue";
 import MultiDocQaDialog from "@/components/MultiDocQaDialog.vue";
-import { Search, Plus, Folder, Connection, Upload, Expand, Fold, MagicStick, Refresh, ArrowUp, ArrowDown, Share, Delete, More, Reading, Lock, Close, ChatDotRound, Edit } from "@element-plus/icons-vue";
+import { Search, Plus, Folder, Connection, Upload, Expand, Fold, MagicStick, Refresh, ArrowUp, ArrowDown, Share, Delete, More, Reading, Lock, Close, ChatDotRound, Edit, Document } from "@element-plus/icons-vue";
 import { formatLocalDate } from "@/utils/date";
 import { useAuthStore } from "@/stores/auth";
 import { Editor } from "@tiptap/vue-3";

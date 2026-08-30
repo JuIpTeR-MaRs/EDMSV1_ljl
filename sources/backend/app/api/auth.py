@@ -165,8 +165,13 @@ def login():
                 "login_name": user.login_name,
                 "display_name": user.display_name(),
                 "employee_no": user.employee_no,
-                "is_manager": user.is_manager,
-                "is_super_admin": user.is_super_admin,
+                "is_manager": user.is_manager or (user.role and user.role.level >= 50),
+                "is_super_admin": user.is_super_admin or (user.role and user.role.level >= 100),
+                "role_id": user.role_id,
+                "role_name": user.role.name if user.role else user.role_title,
+                "role_name_en": user.role.name_en if user.role else None,
+                "role_level": user.role_level,
+                "role_code": user.role.code if user.role else ("super_admin" if user.is_super_admin else ("dept_manager" if user.is_manager else "staff")),
             },
         }
     )
@@ -237,6 +242,86 @@ def register():
     return jsonify({"message": "Registration submitted. Waiting for approval."}), 201
 
 
+def get_user_direct_supervisor(user):
+    """Calculate the direct supervisor for the user based on organizational structure."""
+    if not user:
+        return None
+    if user.is_super_admin or (user.role and user.role.level >= 100):
+        return {
+            "id": None,
+            "display_name": "系统最高决策委员会",
+            "display_name_en": "Executive Governance Board",
+            "role_title": "董事会 / 最高决策层",
+            "role_title_en": "Board of Directors / Executive",
+            "is_board": True
+        }
+    
+    from app.models.core import Department
+    from app.extensions import db
+    
+    # 1. Check if there is a department manager in the user's current department (excluding the user themselves)
+    if user.department_id:
+        dept_managers = User.query.filter(
+            User.department_id == user.department_id,
+            User.id != user.id,
+            User.is_manager == True
+        ).all()
+        if dept_managers:
+            mgr = sorted(dept_managers, key=lambda u: u.role.level if u.role else (50 if u.is_manager else 10), reverse=True)[0]
+            return {
+                "id": mgr.id,
+                "login_name": mgr.login_name,
+                "display_name": mgr.display_name(),
+                "employee_no": mgr.employee_no,
+                "role_title": mgr.role.name if mgr.role else (mgr.role_title or "部门主管"),
+                "role_title_en": mgr.role.name_en if (mgr.role and mgr.role.name_en) else "Department Supervisor",
+                "department_name": mgr.department.name if mgr.department else "",
+                "department_name_en": mgr.department.name_en if mgr.department else "",
+            }
+        
+        # 2. If the user is the manager or no manager in this department, search parent department hierarchy!
+        curr_dept = user.department
+        visited = set()
+        while curr_dept and curr_dept.parent_id and curr_dept.id not in visited:
+            visited.add(curr_dept.id)
+            parent_dept = db.session.get(Department, curr_dept.parent_id)
+            if not parent_dept:
+                break
+            parent_managers = User.query.filter(
+                User.department_id == parent_dept.id,
+                User.id != user.id
+            ).all()
+            if parent_managers:
+                mgr = sorted(parent_managers, key=lambda u: (100 if u.is_super_admin else 0) + (50 if u.is_manager else 0) + (u.role.level if u.role else 0), reverse=True)[0]
+                return {
+                    "id": mgr.id,
+                    "login_name": mgr.login_name,
+                    "display_name": mgr.display_name(),
+                    "employee_no": mgr.employee_no,
+                    "role_title": mgr.role.name if mgr.role else (mgr.role_title or "主管负责人"),
+                    "role_title_en": mgr.role.name_en if (mgr.role and mgr.role.name_en) else "Head of Department",
+                    "department_name": mgr.department.name if mgr.department else "",
+                    "department_name_en": mgr.department.name_en if mgr.department else "",
+                }
+            curr_dept = parent_dept
+
+    # 3. Fallback to System Super Admin
+    admin_user = User.query.filter(User.is_super_admin == True, User.id != user.id).first()
+    if admin_user:
+        return {
+            "id": admin_user.id,
+            "login_name": admin_user.login_name,
+            "display_name": admin_user.display_name(),
+            "employee_no": admin_user.employee_no,
+            "role_title": admin_user.role.name if admin_user.role else "系统最高决策者",
+            "role_title_en": admin_user.role.name_en if (admin_user.role and admin_user.role.name_en) else "Executive Leader",
+            "department_name": admin_user.department.name if admin_user.department else "最高决策中心",
+            "department_name_en": admin_user.department.name_en if admin_user.department else "Executive Center",
+        }
+    
+    return None
+
+
 @bp.get("/me")
 @jwt_required()
 def me():
@@ -251,14 +336,27 @@ def me():
             "first_name": user.first_name,
             "last_name": user.last_name,
             "employee_no": user.employee_no,
-            "is_manager": user.is_manager,
-            "is_super_admin": user.is_super_admin,
+            "is_manager": user.is_manager or (user.role and user.role.level >= 50),
+            "is_super_admin": user.is_super_admin or (user.role and user.role.level >= 100),
+            "role_id": user.role_id,
+            "role_name": user.role.name if user.role else user.role_title,
+            "role_name_en": user.role.name_en if user.role else None,
+            "role_level": user.role_level,
+            "role_code": user.role.code if user.role else ("super_admin" if user.is_super_admin else ("dept_manager" if user.is_manager else "staff")),
+            "department_name": user.department.name if user.department else "",
+            "department_name_en": user.department.name_en if user.department else "",
             "department": {
                 "id": user.department.id if user.department else None,
                 "name": user.department.name if user.department else "",
                 "name_en": user.department.name_en if user.department else ""
             } if user.department else None,
-            "position": user.position_short
+            "position": user.position_short,
+            "position_short": user.position_short,
+            "position_full_name": user.position_full_name,
+            "birth_date": user.birth_date.strftime("%Y-%m-%d") if user.birth_date else None,
+            "gender": user.gender,
+            "age": user.age,
+            "direct_supervisor": get_user_direct_supervisor(user)
         }
     )
 

@@ -2,35 +2,38 @@
 REM Start EDMS frontend service (manual deployment)
 echo Starting EDMS frontend service...
 
-REM Change to frontend directory
-cd /d "%~dp0"
+REM Set root directory
+set "ROOT_DIR=%~dp0..\"
+cd /d "%ROOT_DIR%"
 
 REM Check and generate local SSL certificates if missing
-if not exist "localhost+2.pem" (
-    if exist "mkcert.exe" (
+if not exist "certs\localhost+2.pem" if not exist "localhost+2.pem" (
+    if exist "tools\mkcert\mkcert.exe" (
         echo ============================================================
         echo [SSL] Local development certificates not found.
-        echo [SSL] Generating certificates using mkcert.exe...
-        mkcert.exe localhost 127.0.0.1 ::1
+        echo [SSL] Generating certificates using mkcert.exe in certs/...
+        if not exist "certs" mkdir certs
+        cd certs
+        ..\tools\mkcert\mkcert.exe localhost 127.0.0.1 ::1
+        cd ..
         echo [SSL] Certificates generated successfully.
-        echo [SSL] IMPORTANT: If this is the first time on this device,
-        echo       please run "mkcert.exe -install" in an ADMINISTRATOR
-        echo       terminal to make your system trust these certificates.
         echo ============================================================
         echo.
+    ) else if exist "mkcert.exe" (
+        echo [SSL] Generating certificates using mkcert.exe...
+        mkcert.exe localhost 127.0.0.1 ::1
     ) else (
         echo [SSL] mkcert.exe not found. Frontend will run in HTTP mode.
         echo.
     )
 )
 
-cd sources\frontend
+cd "%ROOT_DIR%sources\frontend"
 
 REM Check if node_modules exists
 if not exist "node_modules" (
     echo Installing npm dependencies...
     
-    REM Check if cnpm is available, otherwise use npm with legacy peer deps
     where cnpm >nul 2>nul
     if %ERRORLEVEL% EQU 0 (
         echo Using cnpm...

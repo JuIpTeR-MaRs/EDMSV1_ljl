@@ -96,13 +96,21 @@ mkdir -p "$CERTS_DIR"
 mkdir -p "$BIN_CERTS_DIR"
 
 if [ ! -f "$CERTS_DIR/fullchain.pem" ]; then
-    if [ -f "$ROOT_DIR/localhost+2.pem" ]; then
+    if [ -f "$ROOT_DIR/certs/localhost+2.pem" ]; then
+        echo "[SSL] Found local development certificates in certs/, copying them..."
+        cp "$ROOT_DIR/certs/localhost+2.pem" "$CERTS_DIR/fullchain.pem"
+        cp "$ROOT_DIR/certs/localhost+2-key.pem" "$CERTS_DIR/privkey.pem"
+    elif [ -f "$ROOT_DIR/localhost+2.pem" ]; then
         echo "[SSL] Found local development certificates in root, copying them..."
         cp "$ROOT_DIR/localhost+2.pem" "$CERTS_DIR/fullchain.pem"
         cp "$ROOT_DIR/localhost+2-key.pem" "$CERTS_DIR/privkey.pem"
     else
         MKCERT_PATH=""
-        if [ -f "$ROOT_DIR/mkcert" ]; then
+        if [ -f "$ROOT_DIR/tools/mkcert/mkcert" ]; then
+            MKCERT_PATH="$ROOT_DIR/tools/mkcert/mkcert"
+        elif [ -f "$ROOT_DIR/tools/mkcert/mkcert.exe" ]; then
+            MKCERT_PATH="$ROOT_DIR/tools/mkcert/mkcert.exe"
+        elif [ -f "$ROOT_DIR/mkcert" ]; then
             MKCERT_PATH="$ROOT_DIR/mkcert"
         elif [ -f "$ROOT_DIR/mkcert.exe" ]; then
             MKCERT_PATH="$ROOT_DIR/mkcert.exe"

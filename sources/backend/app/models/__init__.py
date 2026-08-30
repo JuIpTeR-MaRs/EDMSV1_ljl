@@ -1,4 +1,4 @@
-from app.models.core import Department, Position, User
+from app.models.core import Department, Position, User, Role
 from app.models.document import (
     Document,
     DocumentPermission,
@@ -18,6 +18,7 @@ __all__ = [
     "Department",
     "Position",
     "User",
+    "Role",
     "Document",
     "DocumentVersion",
     "DocumentPermission",

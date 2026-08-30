@@ -3,9 +3,14 @@ import vue from "@vitejs/plugin-vue";
 import path from "path";
 import fs from "fs";
 
-// Resolve paths to mkcert certificates in the repository root directory
-const sslKeyPath = path.resolve(__dirname, "../../localhost+2-key.pem");
-const sslCertPath = path.resolve(__dirname, "../../localhost+2.pem");
+// Resolve paths to mkcert certificates (in certs/ directory or repository root)
+const certsDirKey = path.resolve(__dirname, "../../certs/localhost+2-key.pem");
+const certsDirCert = path.resolve(__dirname, "../../certs/localhost+2.pem");
+const rootDirKey = path.resolve(__dirname, "../../localhost+2-key.pem");
+const rootDirCert = path.resolve(__dirname, "../../localhost+2.pem");
+
+const sslKeyPath = fs.existsSync(certsDirKey) ? certsDirKey : rootDirKey;
+const sslCertPath = fs.existsSync(certsDirCert) ? certsDirCert : rootDirCert;
 
 const hasCert = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath);
 

@@ -5,8 +5,8 @@ echo Starting EDMS backend service...
 set PYTHONUNBUFFERED=1
 
 REM Change to backend directory
-cd /d "%~dp0"
-cd sources\backend
+set "ROOT_DIR=%~dp0..\"
+cd /d "%ROOT_DIR%sources\backend"
 
 REM Check if virtual environment exists
 if not exist ".venv" (

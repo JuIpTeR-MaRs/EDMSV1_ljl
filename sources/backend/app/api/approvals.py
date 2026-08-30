@@ -118,14 +118,75 @@ def decide(participant_id: int):
     data = request.get_json(silent=True) or {}
     decision = (data.get("decision") or "").lower()
     reason = data.get("reason")
-    if decision not in ("approve", "reject"):
-        return jsonify({"error": "decision must be approve or reject"}), 400
+    target_user_id = data.get("target_user_id")
+
+    if decision not in ("approve", "reject", "forward"):
+        return jsonify({"error": "decision must be approve, reject, or forward"}), 400
     if decision == "reject" and not (reason and str(reason).strip()):
         return jsonify({"error": "reason required for reject"}), 400
+    
+    target_user = None
+    if decision == "forward":
+        if not target_user_id:
+            return jsonify({"error": "target_user_id required for forward"}), 400
+        try:
+            target_user_id = int(target_user_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid target_user_id"}), 400
+        if target_user_id == user.id:
+            return jsonify({"error": "Cannot forward to yourself"}), 400
+        target_user = db.session.get(User, target_user_id)
+        if not target_user or target_user.registration_status != "active":
+            return jsonify({"error": "Target user not found or inactive"}), 400
+
     try:
-        apply_decision(p, decision, reason, doc)
+        apply_decision(p, decision, reason, doc, target_user_id=target_user_id)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+
+    # 💡 如果是同意并流转，发送通知和记录审计日志
+    if decision == "forward" and target_user:
+        from app.models.notification import Notification
+        from app.models.workflow import AuditLog
+
+        # 1. 给被流转的目标审批人发送待办通知
+        n_target = Notification()
+        n_target.user_id = target_user_id
+        n_target.type = "审批"
+        n_target.title = f"待审批(流转): {doc.title if doc else '待审流程'}"
+        n_target.content = f"审批人 {user.display_name()} 已同意并流转文档 '{doc.title if doc else ''}' 邀请您审核。意见：{reason or '无'}"
+        n_target.related_doc_id = doc.id if doc else None
+        n_target.link_url = f"/inbox"
+        db.session.add(n_target)
+
+        # 2. 给文档所有者/发起人发送进度通知
+        if doc and doc.owner_id and doc.owner_id != user.id and doc.owner_id != target_user_id:
+            n_owner = Notification()
+            n_owner.user_id = doc.owner_id
+            n_owner.type = "审批"
+            n_owner.title = f"审批流转进度: {doc.title}"
+            n_owner.content = f"审批人 {user.display_name()} 已同意并流转文档 '{doc.title}' 给 {target_user.display_name()} 继续审核。"
+            n_owner.related_doc_id = doc.id
+            n_owner.link_url = f"/inbox"
+            db.session.add(n_owner)
+
+        # 3. 记录审计日志
+        if doc:
+            audit = AuditLog(
+                document_id=doc.id,
+                user_id=user.id,
+                action="FORWARD_APPROVAL",
+                summary=f"审批人 {user.display_name()} 同意并流转文档给 {target_user.display_name()} (意见: {reason or '无'})",
+                payload_json=json.dumps({
+                    "action": "forward",
+                    "target_user_id": target_user_id,
+                    "target_user_name": target_user.display_name(),
+                    "reason": reason or "",
+                    "flow_id": p.flow_id
+                }, ensure_ascii=False)
+            )
+            db.session.add(audit)
+
     db.session.commit()
 
     # 💡 如果文档审批完成（通过），执行上链存证并通知所有编辑者
@@ -193,7 +254,6 @@ def decide(participant_id: int):
             "can_edit": (doc.status in ("draft", "approved"))
         }, to=f"doc_{doc.id}")
 
-
     return jsonify({"ok": True, "document_status": doc.status if doc else "N/A"})
 
 
@@ -242,6 +302,86 @@ def my_applications():
         })
         
     return jsonify({"items": items})
+
+
+@bp.get("/handled")
+@jwt_required()
+def handled():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from app.models.workflow import ApprovalDecision
+
+    # Query all participants of this user that have made a decision
+    participants = ApprovalParticipant.query.join(
+        ApprovalDecision, ApprovalDecision.participant_id == ApprovalParticipant.id
+    ).filter(
+        ApprovalParticipant.user_id == user.id
+    ).order_by(ApprovalDecision.decided_at.desc()).all()
+
+    items = []
+    stats = {"total": 0, "approved": 0, "forwarded": 0, "rejected": 0}
+
+    for p in participants:
+        flow = p.flow
+        if not flow:
+            continue
+        doc = flow.document
+        
+        initiator_name = "Unknown"
+        if flow.flow_type == "registration":
+            initiator = User.query.get(flow.rel_id) if flow.rel_id else None
+            initiator_name = initiator.display_name() if initiator else "New User"
+            title = f"User Registration: {initiator_name}"
+        elif doc:
+            initiator_name = doc.owner.display_name() if doc.owner else "Unknown"
+            title = doc.title
+        else:
+            continue
+
+        all_participants = []
+        for pd in flow.participants:
+            user_name = pd.user.display_name() if pd.user else "Unknown"
+            all_participants.append({
+                "user_id": pd.user_id,
+                "user_name": user_name,
+                "decision": pd.decision.decision if pd.decision else None,
+                "reason": pd.decision.reason if pd.decision else None,
+                "step_order": pd.step_order,
+                "decided_at": (pd.decision.decided_at.isoformat() + "Z") if (pd.decision and pd.decision.decided_at) else None
+            })
+
+        my_decision = p.decision.decision if p.decision else None
+        if my_decision == "approve":
+            stats["approved"] += 1
+        elif my_decision == "forward":
+            stats["forwarded"] += 1
+        elif my_decision == "reject":
+            stats["rejected"] += 1
+        stats["total"] += 1
+
+        items.append({
+            "participant_id": p.id,
+            "flow_id": flow.id,
+            "document_id": doc.id if doc else None,
+            "doc_number": doc.doc_number if doc else None,
+            "title": title,
+            "initiator_name": initiator_name,
+            "flow_status": flow.status,
+            "flow_type": flow.flow_type,
+            "my_decision": my_decision,
+            "my_reason": p.decision.reason if p.decision else "",
+            "my_decided_at": (p.decision.decided_at.isoformat() + "Z") if (p.decision and p.decision.decided_at) else None,
+            "progress": {
+                "done": sum(1 for x in flow.participants if x.decision),
+                "total": len(flow.participants)
+            },
+            "submitted_at": flow.created_at.isoformat() + "Z" if flow.created_at else None,
+            "details": all_participants
+        })
+
+    return jsonify({"items": items, "stats": stats, "total": len(items)})
     
 @bp.post("/recall")
 @jwt_required()
@@ -313,7 +453,8 @@ def ai_summary(flow_id: int):
     for p in flow.participants:
         if p.decision:
             user_name = p.user.display_name() if p.user else "Unknown"
-            opinions.append(f"【{user_name}】{p.decision.decision}: {p.decision.reason}")
+            decision_label = "同意并流转" if p.decision.decision == "forward" else ("同意" if p.decision.decision == "approve" else "驳回")
+            opinions.append(f"【{user_name}】{decision_label}: {p.decision.reason or '无'}")
             
     opinions_text = "\n".join(opinions) if opinions else "暂无审批意见。"
     

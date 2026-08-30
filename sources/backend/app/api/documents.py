@@ -729,6 +729,52 @@ def get_document(doc_id):
     if not doc or not user_can_view_document(user, doc):
         return jsonify({"error": "Not found"}), 404
     ver = doc.current_version
+    
+    # Parse structured content & schema if low_code_form
+    template_schema = None
+    form_data = None
+    if doc.template_schema:
+        try:
+            template_schema = json.loads(doc.template_schema) if isinstance(doc.template_schema, str) else doc.template_schema
+        except Exception:
+            template_schema = None
+            
+    if ver and ver.content_json:
+        try:
+            c_obj = json.loads(ver.content_json) if isinstance(ver.content_json, str) else ver.content_json
+            if isinstance(c_obj, dict):
+                form_data = c_obj.get("form_data")
+                if not template_schema and c_obj.get("schema"):
+                    template_schema = c_obj.get("schema")
+        except Exception:
+            pass
+
+    # Extract detailed approval flow history & steps
+    flow = ApprovalFlow.query.filter_by(document_id=doc.id).order_by(ApprovalFlow.id.desc()).first()
+    approval_info = None
+    if flow:
+        participants_list = []
+        for p in flow.participants:
+            participants_list.append({
+                "id": p.id,
+                "user_id": p.user_id,
+                "user_name": p.user.display_name() if p.user else "未知审批人",
+                "department_name": p.user.department.name if (p.user and p.user.department) else None,
+                "step_order": p.step_order,
+                "decision": p.decision.decision if p.decision else None,
+                "reason": p.decision.reason if p.decision else None,
+                "decided_at": (p.decision.decided_at.isoformat() + "Z") if (p.decision and p.decision.decided_at) else None,
+                "is_current_step": (flow.status == "active") and (flow.flow_type == "parallel" or p.step_order == flow.current_order) and (not p.decision)
+            })
+        approval_info = {
+            "flow_id": flow.id,
+            "flow_status": flow.status,
+            "flow_type": flow.flow_type,
+            "current_order": flow.current_order,
+            "submitted_at": flow.created_at.isoformat() + "Z" if flow.created_at else None,
+            "participants": participants_list
+        }
+
     body = {
         **_doc_to_summary(doc, user),
         "owner_login": doc.owner.login_name if doc.owner else None,
@@ -738,9 +784,84 @@ def get_document(doc_id):
         if ver and ver.yjs_state
         else None,
         "file_path": ver.file_path if ver else None,
-        "doc_type": doc.doc_type,
+        "doc_type": doc.doc_type or ("low_code_form" if template_schema else "rich_text"),
+        "is_low_code": bool(template_schema),
+        "template_schema": template_schema,
+        "form_data": form_data,
+        "approval_info": approval_info
     }
     return jsonify(body)
+
+
+@bp.put("/<doc_id>/form-data")
+@jwt_required()
+def update_document_form_data(doc_id):
+    """Update form data on a low-code draft document and refresh content."""
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    doc = Document.get_by_id_or_number(doc_id)
+    if not doc or not user_can_view_document(user, doc):
+        return jsonify({"error": "Not found"}), 404
+        
+    if doc.status != "draft" and not user.is_super_admin:
+        return jsonify({"error": "Only draft forms can be modified"}), 400
+        
+    data = request.get_json(silent=True) or {}
+    new_form_data = data.get("form_data", {})
+    new_title = (data.get("title") or "").strip()
+    
+    if new_title:
+        doc.title = new_title[:512]
+        
+    schema = None
+    if doc.template_schema:
+        try:
+            schema = json.loads(doc.template_schema) if isinstance(doc.template_schema, str) else doc.template_schema
+        except Exception:
+            pass
+
+    from app.api.templates import _generate_doc_markdown_from_form
+    doc_markdown = _generate_doc_markdown_from_form(
+        title=doc.title,
+        form_data=new_form_data,
+        schema=schema or {},
+        user_name=doc.owner.display_name() if doc.owner else user.display_name(),
+        dept_name=doc.owner.department.name if (doc.owner and doc.owner.department) else "未分配部门",
+        doc_number=doc.doc_number or ""
+    )
+
+    ver = doc.current_version
+    if ver:
+        ver.content_json = json.dumps({
+            "form_data": new_form_data,
+            "schema": schema,
+            "markdown": doc_markdown
+        })
+        ver.updated_at = datetime.utcnow()
+    else:
+        ver = DocumentVersion(
+            document_id=doc.id,
+            version_no=1,
+            content_json=json.dumps({
+                "form_data": new_form_data,
+                "schema": schema,
+                "markdown": doc_markdown
+            }),
+            created_by_id=user.id
+        )
+        db.session.add(ver)
+        db.session.flush()
+        doc.current_version_id = ver.id
+
+    doc.updated_at = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify({
+        "message": "Form data updated successfully",
+        "title": doc.title,
+        "form_data": new_form_data
+    })
 
 
 @bp.patch("/<doc_id>")
@@ -1254,6 +1375,36 @@ def upload_image():
     # 注意：URL 仍然通过 /static/images 访问，我们需要在 Web 服务器配置静态映射
     url = f"/static/images/{filename}"
     return jsonify({"url": url})
+
+
+@bp.post("/upload-attachment")
+@jwt_required()
+def upload_attachment():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if "file" not in request.files:
+        return jsonify({"error": "No file parameter"}), 400
+    file = request.files["file"]
+    if not file or not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+    
+    ext = os.path.splitext(file.filename)[1].lower()
+    from flask import current_app
+    storage_base = os.environ.get("STORAGE_PATH", current_app.root_path)
+    save_dir = os.path.join(storage_base, "static", "attachments")
+    os.makedirs(save_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(save_dir, filename)
+    file.save(file_path)
+    url = f"/static/attachments/{filename}"
+    return jsonify({
+        "url": url,
+        "filename": filename,
+        "original_name": file.filename,
+        "size": os.path.getsize(file_path)
+    })
+
 
 
 

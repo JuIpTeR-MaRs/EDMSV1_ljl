@@ -33,7 +33,7 @@
           <el-icon><Message /></el-icon>
           <span>{{ t("nav.inbox", "Approval Inbox") }}</span>
         </el-menu-item>
-        <el-menu-item v-if="auth.user?.is_manager" index="/users">
+        <el-menu-item index="/users">
           <el-icon><User /></el-icon>
           <span>{{ t("nav.users", "Member Management") }}</span>
         </el-menu-item>
@@ -64,7 +64,7 @@
           <el-icon class="collapse-btn" @click="toggleCollapse">
             <component :is="isCollapse ? Expand : Fold" />
           </el-icon>
-          <span class="logo-text">Ecosystem of Document Matrix & Security 全栈智能协同与可信文档管理平台</span>
+          <span class="logo-text">{{ t("common.appNameFull", "Ecosystem of Document Matrix & Security 全栈智能协同与可信文档管理平台") }}</span>
         </div>
         <div class="spacer" />
         
@@ -124,7 +124,7 @@
             effect="dark"
             class="role-badge"
           >
-            {{ auth.user?.is_super_admin ? t('common.roles.admin') : (auth.user?.is_manager ? t('common.roles.manager') : t('common.roles.user')) }}
+            {{ (locale === 'zh-CN' ? auth.user?.role_name : (auth.user?.role_name_en || auth.user?.role_name)) || (auth.user?.is_super_admin ? t('common.roles.admin') : (auth.user?.is_manager ? t('common.roles.manager') : t('common.roles.user'))) }}
           </el-tag>
           <el-avatar size="small" :style="{ backgroundColor: 'var(--el-color-primary)' }">
             {{ (auth.user?.display_name || auth.user?.login_name || "U").charAt(0).toUpperCase() }}
@@ -165,7 +165,7 @@ import { formatLocalDate } from "@/utils/date";
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const notifications = ref<any[]>([]);
 const unreadCount = ref(0);

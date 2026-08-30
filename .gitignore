@@ -33,6 +33,7 @@ sources/backend/qdrant_data/
 sources/backend/app/fastembed_cache/
 sources/backend/fastembed_cache/
 sources/backend/app/static/uploads/
+sources/backend/app/static/attachments/
 sources/backend/debug_audio/
 sources/debug_audio/
 tool_caches/
@@ -42,6 +43,8 @@ install/
 .lock
 
 # Local development certificates and tools
+certs/
+tools/
 mkcert.exe
 *.pem
 

@@ -125,9 +125,23 @@ def create_app(config_class=Config):
                 else:
                     user_info = f"UserID: {user_id} (未在DB中找到该用户)"
         except Exception:
-            pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             
         g.user_info = user_info
+
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        """Ensure database session is cleanly closed and recycled after every request."""
+        try:
+            if exception:
+                db.session.rollback()
+        except Exception:
+            pass
+        finally:
+            db.session.remove()
 
     @app.after_request
     def log_request_end(response):
@@ -307,8 +321,22 @@ def create_app(config_class=Config):
         
         # 💡 自动引导超级管理员账号
         def _bootstrap_admin():
-            from app.models import User
+            from app.models import User, Role
             try:
+                # 1. Bootstrap default roles if table empty
+                default_roles = [
+                    {"code": "super_admin", "name": "系统管理员", "name_en": "System Admin", "level": 100, "sort_order": 1, "is_system": True, "can_manage_users": True, "can_manage_depts": True, "can_view_all_docs": True, "description": "系统最高权限管理员，拥有全局控制与管理权限"},
+                    {"code": "director", "name": "总监 / 高级主管", "name_en": "Director / Senior Executive", "level": 80, "sort_order": 2, "is_system": False, "can_manage_users": True, "can_manage_depts": True, "can_view_all_docs": True, "description": "高级管理层，可跨部门监管业务与文档审批"},
+                    {"code": "dept_manager", "name": "部门经理", "name_en": "Department Manager", "level": 50, "sort_order": 3, "is_system": True, "can_manage_users": True, "can_manage_depts": False, "can_view_all_docs": False, "description": "部门主管，负责本部门成员与业务文档审批"},
+                    {"code": "staff", "name": "普通员工", "name_en": "Staff Member", "level": 10, "sort_order": 4, "is_system": True, "can_manage_users": False, "can_manage_depts": False, "can_view_all_docs": False, "description": "常规业务成员，可创建、协作和处理日常文档"}
+                ]
+                for r_def in default_roles:
+                    if not Role.query.filter_by(code=r_def["code"]).first():
+                        db.session.add(Role(**r_def))
+                db.session.flush()
+
+                admin_role = Role.query.filter_by(code="super_admin").first()
+
                 admin = User.query.filter_by(login_name='admin').first()
                 if not admin:
                     # 如果没有任何部门，先尝试创建一个默认部门供 admin 使用
@@ -325,6 +353,7 @@ def create_app(config_class=Config):
                         first_name='System',
                         last_name='Admin',
                         department_id=dept.id if dept else None,
+                        role_id=admin_role.id if admin_role else None,
                         is_manager=True,
                         is_super_admin=True,
                         registration_status='active'
@@ -335,7 +364,7 @@ def create_app(config_class=Config):
                     admin.set_password(_default_admin_password)
                     db.session.add(admin)
                     db.session.commit()
-                    print("[Bootstrap] Admin user created.")
+                    print("[Bootstrap] Admin user created with super_admin role.")
                     print(f"[Bootstrap] ⚠️  SECURITY WARNING: Default admin password is set. "
                           f"Please change it immediately after first login!")
                 else:
@@ -346,6 +375,9 @@ def create_app(config_class=Config):
                         needs_update = True
                     if not admin.is_super_admin:
                         admin.is_super_admin = True
+                        needs_update = True
+                    if admin_role and admin.role_id != admin_role.id:
+                        admin.role_id = admin_role.id
                         needs_update = True
                     if admin.registration_status != 'active':
                         admin.registration_status = 'active'
