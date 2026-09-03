@@ -72,6 +72,27 @@ def get_document_text(doc):
                     text_content = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
                 except Exception as e:
                     print(f"Error parsing PDF on demand: {e}")
+    elif doc.doc_type == "spreadsheet":
+        if ver.content_json:
+            try:
+                sj = json.loads(ver.content_json) if isinstance(ver.content_json, str) else ver.content_json
+                sheets = sj.get("sheets", [])
+                parts = []
+                for s in sheets:
+                    s_name = s.get("name", "Sheet")
+                    cells = s.get("data", {})
+                    sample_values = []
+                    for k, cell_obj in list(cells.items())[:30]:
+                        if isinstance(cell_obj, dict):
+                            val = cell_obj.get("v") or cell_obj.get("m") or ""
+                        else:
+                            val = str(cell_obj)
+                        if val:
+                            sample_values.append(str(val))
+                    parts.append(f"工作表: {s_name}\n数据样本: {', '.join(sample_values[:20])}")
+                text_content = "\n\n".join(parts)
+            except Exception:
+                pass
     else:
         # Rich text document
         if ver.content_json:
@@ -83,6 +104,41 @@ def get_document_text(doc):
                 pass
                 
     return text_content if text_content else doc.title
+
+@bp.post("/generate-title")
+@jwt_required()
+def ai_generate_title():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    doc_id = data.get("doc_id")
+    doc_type = data.get("doc_type", "rich_text")
+    ai_model = data.get("ai_model", "deepseek")
+    lang = data.get("lang", "zh")
+
+    if (not content or len(content) < 5) and doc_id:
+        from app.models.document import Document
+        from app.services.document_access import user_can_view_document
+        doc = Document.get_by_id_or_number(doc_id)
+        if doc and user_can_view_document(user, doc):
+            content = get_document_text(doc)
+            doc_type = doc.doc_type
+
+    if not content or len(content.strip()) < 5:
+        return jsonify({
+            "success": False,
+            "title": "",
+            "error": "文档内容为空或过少，无法识别生成有效标题"
+        }), 400
+
+    result = AIService.generate_document_title(content, doc_type=doc_type, ai_model=ai_model, lang=lang)
+    if not result.get("success"):
+        return jsonify(result), 400
+        
+    return jsonify(result)
 
 @bp.route("/generate", methods=["POST"])
 @jwt_required()
@@ -438,7 +494,97 @@ def check_logic():
     result = AIService.check_logic(text_content, ai_model=ai_model, lang=lang)
     return jsonify({"code": 200, "data": result})
 
+@bp.post("/spreadsheet/formula")
+@jwt_required()
+def ai_spreadsheet_formula():
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+    cell_address = data.get("cell_address", "A1")
+    range_context = data.get("range_context", "")
+    sheet_sample = data.get("sheet_sample", "")
+    ai_model = data.get("ai_model", "deepseek")
+    lang = data.get("lang", "zh")
+
+    if not query:
+        return jsonify({"error": "Missing query description"}), 400
+
+    result = AIService.generate_spreadsheet_formula(
+        query=query,
+        cell_address=cell_address,
+        range_context=range_context,
+        sheet_sample=sheet_sample,
+        ai_model=ai_model,
+        lang=lang
+    )
+    return jsonify({"code": 200, "data": result})
+
+@bp.post("/spreadsheet/generate-table")
+@jwt_required()
+def ai_spreadsheet_generate_table():
+    data = request.get_json(silent=True) or {}
+    prompt = data.get("prompt", "").strip()
+    row_count = int(data.get("row_count", 8))
+    col_count = int(data.get("col_count", 5))
+    ai_model = data.get("ai_model", "deepseek")
+    lang = data.get("lang", "zh")
+
+    if not prompt:
+        return jsonify({"error": "Missing table prompt"}), 400
+
+    result = AIService.generate_spreadsheet_table(
+        prompt=prompt,
+        row_count=row_count,
+        col_count=col_count,
+        ai_model=ai_model,
+        lang=lang
+    )
+    return jsonify({"code": 200, "data": result})
+
+@bp.post("/spreadsheet/insights")
+@jwt_required()
+def ai_spreadsheet_insights():
+    data = request.get_json(silent=True) or {}
+    sheet_name = data.get("sheet_name", "Sheet1")
+    headers = data.get("headers", [])
+    rows_sample = data.get("rows_sample", [])
+    total_rows = int(data.get("total_rows", 0))
+    ai_model = data.get("ai_model", "deepseek")
+    lang = data.get("lang", "zh")
+
+    result = AIService.analyze_spreadsheet_insights(
+        sheet_name=sheet_name,
+        headers=headers,
+        rows_sample=rows_sample,
+        total_rows=total_rows,
+        ai_model=ai_model,
+        lang=lang
+    )
+    return jsonify({"code": 200, "data": result})
+
+@bp.post("/spreadsheet/process-range")
+@jwt_required()
+def ai_spreadsheet_process_range():
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "clean")
+    range_data = data.get("range_data", [])
+    prompt = data.get("prompt", "")
+    target_lang = data.get("target_lang", "en")
+    ai_model = data.get("ai_model", "deepseek")
+
+    if not range_data:
+        return jsonify({"error": "Missing range_data matrix"}), 400
+
+    result = AIService.process_spreadsheet_range(
+        action=action,
+        range_data=range_data,
+        prompt=prompt,
+        target_lang=target_lang,
+        ai_model=ai_model
+    )
+    return jsonify({"code": 200, "data": result})
+
 def random_str(length):
     import random
     import string
     return "".join(random.choices(string.digits, k=length))
+

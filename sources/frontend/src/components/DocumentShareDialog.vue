@@ -12,8 +12,8 @@
         <p class="hint" style="margin-top: 4px;">{{ t('editor.isPublicHint') }}</p>
       </div>
 
-      <!-- 可编辑 (Only for Drafts) -->
-      <div class="perm-section" v-if="docStatus === 'draft'">
+      <!-- 可编辑 -->
+      <div class="perm-section">
         <div class="section-header">
           <el-tag type="primary" effect="plain">{{ t('editor.roleEdit') }}</el-tag>
           <span class="section-desc">{{ t('editor.roleEditDesc') }}</span>
@@ -29,7 +29,7 @@
           <el-option
             v-for="u in optionsForEdit"
             :key="u.id"
-            :label="u.login_name"
+            :label="u.display_name && u.display_name !== u.login_name ? `${u.display_name} (${u.login_name})` : u.login_name"
             :value="u.id"
           />
         </el-select>
@@ -52,7 +52,7 @@
           <el-option
             v-for="u in optionsForComment"
             :key="u.id"
-            :label="u.login_name"
+            :label="u.display_name && u.display_name !== u.login_name ? `${u.display_name} (${u.login_name})` : u.login_name"
             :value="u.id"
           />
         </el-select>
@@ -75,7 +75,7 @@
           <el-option
             v-for="u in optionsForView"
             :key="u.id"
-            :label="u.login_name"
+            :label="u.display_name && u.display_name !== u.login_name ? `${u.display_name} (${u.login_name})` : u.login_name"
             :value="u.id"
           />
         </el-select>
@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import api from "@/api/client";
 import { ElMessage } from "element-plus";
@@ -117,7 +117,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const auth = useAuthStore();
 
-const users = ref<Array<{ id: number; login_name: string }>>([]);
+const users = ref<Array<{ id: number; login_name: string; display_name?: string }>>([]);
 const editIds = ref<number[]>([]);
 const commentIds = ref<number[]>([]);
 const viewIds = ref<number[]>([]);
@@ -162,41 +162,56 @@ const optionsForComment = computed(() => {
 
 async function loadAll() {
   if (!props.documentId) return;
-  const [{ data: u }, { data: p }, { data: doc }] = await Promise.all([
-    api.get("/users", { params: { size: 1000 } }),
-    api.get(`/documents/${props.documentId}/permissions`),
-    api.get(`/documents/${props.documentId}`),
-  ]);
-  users.value = u.items;
-  isPublic.value = doc.is_public;
-  docStatus.value = doc.status;
+  
+  // 1. Fetch Users independently to guarantee the dropdown is never empty
+  try {
+    const { data: u } = await api.get("/users", { params: { size: 1000 } });
+    users.value = u.items || [];
+  } catch (err) {
+    console.error("[DocumentShareDialog] Failed to load users:", err);
+  }
 
-  editIds.value = [];
-  commentIds.value = [];
-  viewIds.value = [];
+  // 2. Fetch Document Info
+  try {
+    const { data: doc } = await api.get(`/documents/${props.documentId}`);
+    isPublic.value = !!doc.is_public;
+    docStatus.value = doc.status || "draft";
+  } catch (err) {
+    console.error("[DocumentShareDialog] Failed to load doc info:", err);
+  }
 
-  (p.items as Array<{ user_id: number; role: string }>).forEach(perm => {
-    if (perm.role === 'edit' && doc.status === 'draft') editIds.value.push(perm.user_id);
-    else if (perm.role === 'comment') commentIds.value.push(perm.user_id);
-    else if (perm.role === 'edit' && doc.status !== 'draft') viewIds.value.push(perm.user_id); // 降级
-    else viewIds.value.push(perm.user_id);
-  });
+  // 3. Fetch Existing Permissions
+  try {
+    const { data: p } = await api.get(`/documents/${props.documentId}/permissions`);
+    editIds.value = [];
+    commentIds.value = [];
+    viewIds.value = [];
+
+    (p.items as Array<{ user_id: number; role: string }> || []).forEach(perm => {
+      if (perm.role === 'edit') editIds.value.push(perm.user_id);
+      else if (perm.role === 'comment') commentIds.value.push(perm.user_id);
+      else viewIds.value.push(perm.user_id);
+    });
+  } catch (err) {
+    console.error("[DocumentShareDialog] Failed to load permissions:", err);
+  }
 }
 
 watch(
-  () => props.modelValue,
-  async (open) => {
-    if (open && props.documentId) {
-      try {
-        await loadAll();
-      } catch {
-        editIds.value = [];
-        commentIds.value = [];
-        viewIds.value = [];
-      }
+  () => [props.modelValue, props.documentId],
+  ([open, docId]) => {
+    if (open && docId) {
+      loadAll();
     }
   },
+  { immediate: true }
 );
+
+onMounted(() => {
+  if (props.modelValue && props.documentId) {
+    loadAll();
+  }
+});
 
 async function save() {
   if (!props.documentId) return;

@@ -50,3 +50,32 @@ def on_awareness(data):
         room=f"doc_{did}",
         skip_sid=request.sid,
     )
+
+
+@socketio.on("spreadsheet_update")
+def on_spreadsheet_update(data):
+    did = data.get("document_id")
+    payload = data.get("payload")
+    if did is None:
+        return
+    emit(
+        "spreadsheet_update",
+        {"document_id": did, "payload": payload, "sid": request.sid},
+        room=f"doc_{did}",
+        skip_sid=request.sid,
+    )
+
+
+@socketio.on("spreadsheet_awareness")
+def on_spreadsheet_awareness(data):
+    did = data.get("document_id")
+    payload = data.get("payload")
+    if did is None:
+        return
+    emit(
+        "spreadsheet_awareness",
+        {"document_id": did, "payload": payload, "sid": request.sid},
+        room=f"doc_{did}",
+        skip_sid=request.sid,
+    )
+

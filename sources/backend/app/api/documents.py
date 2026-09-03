@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 
@@ -447,6 +448,7 @@ def list_documents():
     space_id = request.args.get("space_id")
     dept_id = request.args.get("dept_id")
     status_filter = request.args.get("status")
+    doc_type_filter = request.args.get("doc_type")
     on_chain = request.args.get("on_chain")
 
     if not scope:
@@ -517,6 +519,9 @@ def list_documents():
             return jsonify({"error": "invalid status filter"}), 400
         q = q.filter(Document.status == status_filter)
 
+    if doc_type_filter:
+        q = q.filter(Document.doc_type == doc_type_filter)
+
     # Re-apply space filter at the end
     if space_id:
         from app.models.document import document_spaces
@@ -550,6 +555,7 @@ def create_document():
     data = request.get_json(silent=True) or {}
     title = (data.get("title") or "Untitled").strip()[:512]
     space_id = data.get("space_id")
+    doc_type = (data.get("doc_type") or "rich_text").strip()
     
     from sqlalchemy.exc import IntegrityError
     from sqlalchemy import func
@@ -578,6 +584,7 @@ def create_document():
             doc.title = title
             doc.status = "draft"
             doc.doc_number = doc_number
+            doc.doc_type = doc_type
             if space_id:
                 from app.models.space import Space
                 sp = db.session.get(Space, space_id)
@@ -590,7 +597,10 @@ def create_document():
             ver = DocumentVersion()
             ver.document_id = doc.id
             ver.version_no = 1
-            ver.content_json = DocumentVersion.default_content_json()
+            if doc_type == "spreadsheet":
+                ver.content_json = DocumentVersion.default_spreadsheet_json()
+            else:
+                ver.content_json = DocumentVersion.default_content_json()
             ver.created_by_id = user.id
             db.session.add(ver)
             db.session.flush()
@@ -715,6 +725,99 @@ def import_pdf():
         **_doc_to_summary(doc, user),
         "task_id": task_id
     }), 201
+
+
+@bp.post("/import-excel")
+@jwt_required()
+def import_excel():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    if "file" not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+    
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".xlsx", ".xls", ".csv"]:
+        return jsonify({"error": "Only .xlsx, .xls and .csv files are allowed"}), 400
+    
+    title = request.form.get("title") or os.path.splitext(file.filename)[0]
+    space_id = request.form.get("space_id")
+    
+    from flask import current_app
+    storage_base = os.environ.get("STORAGE_PATH", current_app.root_path)
+    upload_dir = os.path.join(storage_base, "static", "uploads", "excel")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest_path = os.path.join(upload_dir, filename)
+    file.save(dest_path)
+    
+    from app.services.spreadsheet_service import parse_excel_to_spreadsheet_json
+    parsed_json = parse_excel_to_spreadsheet_json(dest_path)
+    
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy import func
+    import random
+    import time
+    
+    doc = None
+    for attempt in range(10):
+        db.session.rollback()
+        today_str = datetime.now().strftime("%Y%m%d")
+        max_doc = db.session.query(func.max(Document.doc_number)).filter(
+            Document.doc_number.like(f"{today_str}%")
+        ).scalar()
+        if max_doc:
+            try:
+                last_seq = int(max_doc[8:])
+                doc_number = f"{today_str}{str(last_seq + 1).zfill(3)}"
+            except:
+                doc_number = f"{today_str}001"
+        else:
+            doc_number = f"{today_str}001"
+            
+        try:
+            doc = Document()
+            doc.owner_id = user.id
+            doc.title = title
+            doc.status = "draft"
+            doc.doc_number = doc_number
+            doc.doc_type = "spreadsheet"
+            if space_id and space_id != "unassigned":
+                from app.models.space import Space
+                sp = db.session.get(Space, space_id)
+                if sp:
+                    doc.spaces.append(sp)
+                    
+            db.session.add(doc)
+            db.session.flush()
+            
+            ver = DocumentVersion()
+            ver.document_id = doc.id
+            ver.version_no = 1
+            ver.content_json = parsed_json
+            ver.file_path = f"/static/uploads/excel/{filename}"
+            ver.created_by_id = user.id
+            db.session.add(ver)
+            db.session.flush()
+            doc.current_version_id = ver.id
+            
+            db.session.commit()
+            break
+        except IntegrityError:
+            db.session.rollback()
+            if attempt == 9:
+                return jsonify({"error": "Failed to generate a unique document number due to high concurrency"}), 500
+            time.sleep(random.uniform(0.01, 0.05))
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": f"Failed to create document: {str(e)}"}), 500
+
+    return jsonify(_doc_to_summary(doc, user)), 201
 
 
 
@@ -1345,6 +1448,27 @@ def export_pdf(doc_id):
         raw,
         mimetype="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="doc_{doc_id}.pdf"'},
+    )
+
+
+@bp.get("/<doc_id>/export.xlsx")
+@jwt_required()
+@audit_log_required("EXPORT_XLSX")
+def export_xlsx(doc_id):
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    doc = Document.get_by_id_or_number(doc_id)
+    if not doc or not user_can_view_document(user, doc):
+        return jsonify({"error": "Not found"}), 404
+    ver = doc.current_version
+    from app.services.spreadsheet_service import export_spreadsheet_json_to_excel_bytes
+    raw = export_spreadsheet_json_to_excel_bytes(ver.content_json if ver else "{}")
+    safe_title = re.sub(r'[^\w\-_.]', '_', doc.title) or f"doc_{doc_id}"
+    return Response(
+        raw,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe_title}.xlsx"'},
     )
 
 

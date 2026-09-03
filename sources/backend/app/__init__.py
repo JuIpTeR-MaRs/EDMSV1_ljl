@@ -269,6 +269,13 @@ def create_app(config_class=Config):
         storage_base = os.environ.get("STORAGE_PATH", app.root_path)
         return send_from_directory(os.path.join(storage_base, "static", "uploads"), filename)
 
+    @app.route("/static/avatars/<path:filename>")
+    def custom_static_avatars(filename):
+        import os
+        from flask import send_from_directory
+        storage_base = os.environ.get("STORAGE_PATH", app.root_path)
+        return send_from_directory(os.path.join(storage_base, "static", "avatars"), filename)
+
     from app.sockets import collab  # noqa: F401  registers handlers
 
     with app.app_context():
@@ -301,6 +308,30 @@ def create_app(config_class=Config):
                 except Exception as e2:
                     db.session.rollback()
                     print(f"[Bootstrap] Failed to auto-patch users schema: {e2}")
+
+            # 💡 Self-healing: Ensure phone, email, avatar_url columns exist
+            try:
+                db.session.execute(text("SELECT phone, email, avatar_url FROM users LIMIT 1"))
+            except Exception:
+                db.session.rollback()
+                try:
+                    print("[Bootstrap] Adding missing phone column to users...")
+                    db.session.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(64) DEFAULT ''"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                try:
+                    print("[Bootstrap] Adding missing email column to users...")
+                    db.session.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(128) DEFAULT ''"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                try:
+                    print("[Bootstrap] Adding missing avatar_url column to users...")
+                    db.session.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512) DEFAULT ''"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
 
             # 💡 Self-healing: Ensure doc_number column exists
             try:
@@ -337,22 +368,41 @@ def create_app(config_class=Config):
 
                 admin_role = Role.query.filter_by(code="super_admin").first()
 
-                admin = User.query.filter_by(login_name='admin').first()
-                if not admin:
-                    # 如果没有任何部门，先尝试创建一个默认部门供 admin 使用
-                    from app.models import Department
-                    dept = Department.query.first()
-                    if not dept:
-                        dept = Department(code="EXEC", name="Executive Office")
-                        db.session.add(dept)
+                # 2. Ensure Enterprise Governance / Executive Center department exists
+                from app.models import Department
+                board_dept = Department.query.filter(
+                    (Department.code == "BOARD_EXEC") | 
+                    (Department.name == "企业最高管理与决策中心") |
+                    (Department.name == "企业最高管理与决策中心 (Board & Executive)") |
+                    (Department.code == "EXEC")
+                ).first()
+                if not board_dept:
+                    board_dept = Department(
+                        code="BOARD_EXEC",
+                        name="企业最高管理与决策中心",
+                        name_en="Board & Executive",
+                        level=100,
+                        parent_id=None
+                    )
+                    db.session.add(board_dept)
+                    db.session.flush()
+                else:
+                    if board_dept.level != 100 or board_dept.name in ["Executive Office", "EXEC"]:
+                        board_dept.name = "企业最高管理与决策中心"
+                        board_dept.name_en = "Board & Executive"
+                        board_dept.code = "BOARD_EXEC"
+                        board_dept.level = 100
+                        board_dept.parent_id = None
                         db.session.flush()
 
+                admin = User.query.filter_by(login_name='admin').first()
+                if not admin:
                     admin = User(
                         login_name='admin',
                         employee_no='ADMIN001',
                         first_name='System',
                         last_name='Admin',
-                        department_id=dept.id if dept else None,
+                        department_id=board_dept.id,
                         role_id=admin_role.id if admin_role else None,
                         is_manager=True,
                         is_super_admin=True,
@@ -364,7 +414,7 @@ def create_app(config_class=Config):
                     admin.set_password(_default_admin_password)
                     db.session.add(admin)
                     db.session.commit()
-                    print("[Bootstrap] Admin user created with super_admin role.")
+                    print("[Bootstrap] Admin user created with super_admin role and Board & Executive dept.")
                     print(f"[Bootstrap] ⚠️  SECURITY WARNING: Default admin password is set. "
                           f"Please change it immediately after first login!")
                 else:
@@ -382,10 +432,13 @@ def create_app(config_class=Config):
                     if admin.registration_status != 'active':
                         admin.registration_status = 'active'
                         needs_update = True
+                    if not admin.department_id:
+                        admin.department_id = board_dept.id
+                        needs_update = True
                     
                     if needs_update:
                         db.session.commit()
-                        print("[Bootstrap] Admin permissions restored.")
+                        print("[Bootstrap] Admin permissions & Board & Executive department restored.")
             except Exception as e:
                 db.session.rollback()
                 print(f"[Bootstrap] Error creating/checking admin: {e}")

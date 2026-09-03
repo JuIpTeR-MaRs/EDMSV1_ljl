@@ -117,6 +117,31 @@ class DocumentVersion(BaseModel):
             }
         )
 
+    @staticmethod
+    def default_spreadsheet_json() -> str:
+        import json
+
+        return json.dumps(
+            {
+                "type": "spreadsheet",
+                "activeSheetId": "sheet_1",
+                "sheets": [
+                    {
+                        "id": "sheet_1",
+                        "name": "Sheet1",
+                        "rowCount": 60,
+                        "colCount": 26,
+                        "cells": {},
+                        "styles": {},
+                        "images": [],
+                        "mergedCells": [],
+                        "columnWidths": {},
+                        "rowHeights": {},
+                    }
+                ],
+            }
+        )
+
 
 class DocumentPermission(BaseModel):
     __tablename__ = "document_permissions"

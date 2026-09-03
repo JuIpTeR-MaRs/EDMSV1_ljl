@@ -97,10 +97,11 @@
           :draggable="isNodeManageable"
           @dragstart.stop="onMemberDragStart(m, node, $event)"
           @dragend.stop="onDragEnd"
-          @click.stop="$emit('view-members', node)"
-          :title="locale === 'zh-CN' ? `可按住拖拽【${m.display_name}】至其他部门卡片快速调动部门` : `Drag & drop 【${m.display_name}】 to transfer department`"
+          @click.stop="$emit('member-click', m, node)"
+          :title="locale === 'zh-CN' ? `点击查看【${m.display_name}】个人信息小卡 (按住可拖拽调动部门)` : `Click to view profile card for 【${m.display_name}】 (Drag to transfer)`"
         >
-          <span class="pill-avatar-letter">{{ (m.display_name || m.username).slice(0, 1).toUpperCase() }}</span>
+          <img v-if="m.avatar_url" :src="m.avatar_url" class="pill-avatar-img" alt="avatar" />
+          <span v-else class="pill-avatar-letter">{{ (m.display_name || m.username).slice(0, 1).toUpperCase() }}</span>
           <span class="pill-display-name">{{ m.display_name }}</span>
           <span v-if="m.is_manager || m.is_super_admin" class="pill-manager-crown">👑</span>
         </div>
@@ -186,6 +187,7 @@
             @drop="(data) => $emit('drop', data)"
             @member-drag-start="(m, s, e) => $emit('member-drag-start', m, s, e)"
             @member-drop="(data) => $emit('member-drop', data)"
+            @member-click="(m, n) => $emit('member-click', m, n)"
             @add-child="(p) => $emit('add-child', p)"
             @edit="(n) => $emit('edit', n)"
             @delete="(n) => $emit('delete', n)"
@@ -252,6 +254,7 @@ const emit = defineEmits<{
   (e: "drop", data: TreeDropPayload): void;
   (e: "member-drag-start", member: any, sourceNode: OrgTreeNodeData, event: DragEvent): void;
   (e: "member-drop", data: { member: any; sourceNode: OrgTreeNodeData; targetNode: OrgTreeNodeData }): void;
+  (e: "member-click", member: any, node: OrgTreeNodeData): void;
   (e: "add-child", parentNode: OrgTreeNodeData): void;
   (e: "edit", node: OrgTreeNodeData): void;
   (e: "delete", node: OrgTreeNodeData): void;
@@ -732,6 +735,14 @@ function onDrop(e: DragEvent) {
   border-style: dashed;
 }
 
+.pill-avatar-img {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .pill-avatar-letter {
   display: inline-flex;
   align-items: center;
@@ -743,6 +754,7 @@ function onDrop(e: DragEvent) {
   border-radius: 50%;
   font-size: 9px;
   font-weight: bold;
+  flex-shrink: 0;
 }
 
 .is-manager-pill .pill-avatar-letter {

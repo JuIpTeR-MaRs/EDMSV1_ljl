@@ -8,11 +8,50 @@
       @updated="loadDoc"
     />
 
+    <!-- 📊 Dedicated Collaborative Spreadsheet Editor for Spreadsheets -->
+    <SpreadsheetEditorView
+      v-else-if="meta.doc_type === 'spreadsheet'"
+      :doc-id="docId"
+      :initial-doc-data="meta"
+      @updated="loadDoc"
+    />
+
     <!-- 📝 Standard Rich-Text Editor View for Regular Documents -->
     <div v-else class="editor-page" v-loading="loading">
     <div class="header-bar">
       <div class="header-left">
-        <el-input v-model="title" style="width: 240px" :disabled="!meta.can_edit" @blur="saveTitle" />
+        <el-tooltip :content="t('common.back', '返回上一页')" placement="bottom" :show-after="400">
+          <el-button 
+            class="back-btn" 
+            :icon="Back" 
+            @click="goBack"
+            :disabled="isGeneratingTitle"
+          >
+            {{ t('common.back', '返回') }}
+          </el-button>
+        </el-tooltip>
+        <el-input 
+          v-model="title" 
+          style="width: 240px" 
+          :disabled="!meta.can_edit || isGeneratingTitle" 
+          @blur="saveTitle" 
+        />
+        <el-tooltip :content="t('editor.aiGenerateTitleTip', 'AI 智能识别文档内容，提炼并自动填写精炼标题')" placement="bottom" :show-after="300">
+          <el-button 
+            v-if="meta.can_edit && meta.doc_type !== 'pdf'"
+            type="primary" 
+            plain 
+            size="default"
+            :loading="isGeneratingTitle"
+            :disabled="isGeneratingTitle"
+            @click="handleGenerateTitle"
+            class="ai-title-btn"
+            style="margin-left: 8px; font-weight: 500;"
+          >
+            <el-icon v-if="!isGeneratingTitle" style="margin-right: 4px;"><MagicStick /></el-icon>
+            {{ isGeneratingTitle ? t('editor.aiGeneratingTitle', 'AI 提炼中...') : t('editor.aiGenerateTitle', 'AI 生成标题') }}
+          </el-button>
+        </el-tooltip>
         <el-tag :type="statusTag" class="status-tag">{{ statusLabel }}</el-tag>
         <span class="hint">{{ saveHint }}</span>
         <el-button 
@@ -144,120 +183,560 @@
       </template>
     </el-dialog>
 
-    <div class="editor-toolbar" v-if="editor && meta.doc_type !== 'pdf'" v-show="meta.can_edit">
-      <el-button-group class="toolbar-group" style="margin-right: 8px;">
-        <el-button size="small" @click="doUndo" :icon="Back" :title="t('editor.toolbar.undo')"></el-button>
-        <el-button size="small" @click="doRedo" :icon="Right" :title="t('editor.toolbar.redo')"></el-button>
-      </el-button-group>
-
-      <el-select v-model="currentFontFamily" size="small" style="width: 120px" @change="setFontFamily">
-        <el-option label="Default" value="Inter, sans-serif" />
-        <el-option label="Arial" value="Arial" />
-        <el-option label="Courier New" value="Courier New" />
-        <el-option label="Georgia" value="Georgia" />
-        <el-option label="Times New Roman" value="Times New Roman" />
-      </el-select>
-      <el-select v-model="currentFontSize" size="small" style="width: 80px" @change="setFontSize">
-        <el-option v-for="size in ['12px', '14px', '16px', '18px', '24px', '36px']" :key="size" :label="size" :value="size" />
-      </el-select>
-      <div class="toolbar-divider"></div>
-      
-      <el-button-group class="toolbar-group">
-        <el-tooltip :content="t('editor.toolbar.bold', 'Bold')" placement="bottom">
-          <el-button size="small" :class="{ 'is-active': editor.isActive('bold') }" @click="editor.chain().focus().toggleBold().run()"><b style="font-family: serif">B</b></el-button>
-        </el-tooltip>
-        <el-tooltip :content="t('editor.toolbar.italic', 'Italic')" placement="bottom">
-          <el-button size="small" :class="{ 'is-active': editor.isActive('italic') }" @click="editor.chain().focus().toggleItalic().run()"><i style="font-family: serif">I</i></el-button>
-        </el-tooltip>
-        <el-tooltip :content="t('editor.toolbar.underline', 'Underline')" placement="bottom">
-          <el-button size="small" :class="{ 'is-active': editor.isActive('underline') }" @click="editor.chain().focus().toggleUnderline().run()"><u style="font-family: serif">U</u></el-button>
-        </el-tooltip>
-        <el-tooltip :content="t('editor.toolbar.strike', 'Strike')" placement="bottom">
-          <el-button size="small" :class="{ 'is-active': editor.isActive('strike') }" @click="editor.chain().focus().toggleStrike().run()"><s style="font-family: serif">S</s></el-button>
-        </el-tooltip>
-      </el-button-group>
-
-      <div class="toolbar-divider"></div>
-
-      <el-button-group class="toolbar-group">
-        <el-button size="small" :class="{ 'is-active': editor.isActive('heading', { level: 1 }) }" @click="editor.chain().focus().toggleHeading({ level: 1 }).run()">H1</el-button>
-        <el-button size="small" :class="{ 'is-active': editor.isActive('heading', { level: 2 }) }" @click="editor.chain().focus().toggleHeading({ level: 2 }).run()">H2</el-button>
-        <el-button size="small" :class="{ 'is-active': editor.isActive('heading', { level: 3 }) }" @click="editor.chain().focus().toggleHeading({ level: 3 }).run()">H3</el-button>
-        <el-button size="small" :class="{ 'is-active': editor.isActive('paragraph') }" @click="editor.chain().focus().setParagraph().run()">P</el-button>
-      </el-button-group>
-
-      <div class="toolbar-divider"></div>
-
-      <el-button-group class="toolbar-group">
-        <el-button size="small" :class="{ 'is-active': editor.isActive({ textAlign: 'left' }) }" @click="editor.chain().focus().setTextAlign('left').run()">L</el-button>
-        <el-button size="small" :class="{ 'is-active': editor.isActive({ textAlign: 'center' }) }" @click="editor.chain().focus().setTextAlign('center').run()">C</el-button>
-        <el-button size="small" :class="{ 'is-active': editor.isActive({ textAlign: 'right' }) }" @click="editor.chain().focus().setTextAlign('right').run()">R</el-button>
-        <el-button size="small" :class="{ 'is-active': editor.isActive({ textAlign: 'justify' }) }" @click="editor.chain().focus().setTextAlign('justify').run()">J</el-button>
-      </el-button-group>
-
-      <div class="toolbar-divider"></div>
-
-      <el-button-group class="toolbar-group">
-        <el-button size="small" :class="{ 'is-active': editor.isActive('bulletList') }" @click="editor.chain().focus().toggleBulletList().run()">• {{ t("editor.toolbar.bulletList") }}</el-button>
-        <el-button size="small" :class="{ 'is-active': editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()">1. {{ t("editor.toolbar.orderedList") }}</el-button>
-      </el-button-group>
-      
-      <div class="toolbar-divider"></div>
-      
-      <el-button-group class="toolbar-group">
-        <el-button size="small" @click="doOutdent">- {{ t("editor.toolbar.outdent") }}</el-button>
-        <el-button size="small" @click="doIndent">+ {{ t("editor.toolbar.indent") }}</el-button>
-      </el-button-group>
-
-      <div class="toolbar-divider"></div>
-      <el-button size="small" @click="insertImage">{{ t("editor.toolbar.image") }}</el-button>
-      <el-button size="small" @click="insertCustomTable">{{ t("editor.toolbar.table") }}</el-button>
-      <el-button size="small" type="success" plain @click="importDocx">{{ t("editor.toolbar.importDocx") }}</el-button>
-      <el-button size="small" type="info" plain @click="searchVisible = !searchVisible">{{ t("editor.toolbar.findReplace") }}</el-button>
-      <el-dropdown trigger="click" style="margin-left: 8px; margin-right: 8px;">
-        <el-button size="small" type="primary" plain>
-          <el-icon style="margin-right: 4px;"><MagicStick /></el-icon> AI功能
-          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item @click="runContractProofread" :disabled="proofreading">合同校对</el-dropdown-item>
-            <el-dropdown-item @click="runLogicCheck" :disabled="checkingLogic">逻辑检查</el-dropdown-item>
-            <el-dropdown-item @click="runPunctuationCheck" :disabled="checkingPunctuation">标点检查</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      
-      <el-button-group class="toolbar-group" v-if="editor && editor.isActive('table')">
-        <el-button size="small" @click="editor.chain().focus().addRowBefore().run()">{{ t("editor.toolbar.addRowBefore") }}</el-button>
-        <el-button size="small" @click="editor.chain().focus().addRowAfter().run()">{{ t("editor.toolbar.addRowAfter") }}</el-button>
-        <el-button size="small" @click="editor.chain().focus().deleteRow().run()">{{ t("editor.toolbar.deleteRow") }}</el-button>
-        <el-button size="small" @click="editor.chain().focus().addColumnBefore().run()">{{ t("editor.toolbar.addColumnBefore") }}</el-button>
-        <el-button size="small" @click="editor.chain().focus().addColumnAfter().run()">{{ t("editor.toolbar.addColumnAfter") }}</el-button>
-        <el-button size="small" @click="editor.chain().focus().deleteColumn().run()">{{ t("editor.toolbar.deleteColumn") }}</el-button>
-        <el-button size="small" @click="editor.chain().focus().deleteTable().run()">{{ t("editor.toolbar.deleteTable") }}</el-button>
-        <el-button size="small" @click="editor.chain().focus().toggleHeaderRow().run()">{{ t("editor.toolbar.headerRow") }}</el-button>
-      </el-button-group>
-      <el-button-group class="toolbar-group" v-if="editor && editor.isActive('image')" style="margin-left: 8px;">
-        <el-button size="small" type="warning" plain @click="setImgWidth('100%')">
-          {{ t("editor.toolbar.imgSize100") }}
-        </el-button>
-        <el-button size="small" type="warning" plain @click="setImgWidth('50%')">
-          {{ t("editor.toolbar.imgSize50") }}
-        </el-button>
-        <el-button size="small" type="warning" plain @click="setImgWidth('25%')">
-          {{ t("editor.toolbar.imgSize25") }}
-        </el-button>
-      </el-button-group>
-
-      <div class="toolbar-divider"></div>
-      <div style="display: flex; align-items: center; gap: 4px; font-size: 12px; margin-right:8px;">
-        <label>{{ t("editor.toolbar.textColor") }}</label>
-        <input type="color" v-model="currentColor" @change="setTextColor" style="width: 24px; height: 24px; padding: 0; border: none; cursor: pointer" />
+    <!-- 2. Word Ribbon Navigation Tabs -->
+    <div class="word-ribbon-tabs-nav" v-if="editor && meta.doc_type !== 'pdf'" v-show="meta.can_edit">
+      <div class="word-ribbon-quick-actions">
+        <button class="word-ribbon-quick-btn" @click="doUndo" :title="t('editor.toolbar.undo')">
+          <el-icon><Back /></el-icon>
+        </button>
+        <button class="word-ribbon-quick-btn" @click="doRedo" :title="t('editor.toolbar.redo')">
+          <el-icon><Right /></el-icon>
+        </button>
       </div>
-      <div style="display: flex; align-items: center; gap: 4px; font-size: 12px">
-        <label>{{ t("editor.toolbar.highlight") }}</label>
-        <input type="color" v-model="currentHighlight" @change="setHighlight" style="width: 24px; height: 24px; padding: 0; border: none; cursor: pointer" />
+      <div class="word-ribbon-tab-sep"></div>
+      <button 
+        class="word-ribbon-tab-btn" 
+        :class="{ active: activeWordRibbonTab === 'home' }"
+        @click="activeWordRibbonTab = 'home'"
+      >
+        开始
+      </button>
+      <button 
+        class="word-ribbon-tab-btn" 
+        :class="{ active: activeWordRibbonTab === 'insert' }"
+        @click="activeWordRibbonTab = 'insert'"
+      >
+        插入
+      </button>
+      <button 
+        class="word-ribbon-tab-btn" 
+        :class="{ active: activeWordRibbonTab === 'layout' }"
+        @click="activeWordRibbonTab = 'layout'"
+      >
+        页面布局
+      </button>
+      <button 
+        class="word-ribbon-tab-btn" 
+        :class="{ active: activeWordRibbonTab === 'review' }"
+        @click="activeWordRibbonTab = 'review'"
+      >
+        审阅
+      </button>
+      <button 
+        class="word-ribbon-tab-btn ai-tab-btn" 
+        :class="{ active: activeWordRibbonTab === 'ai' }"
+        @click="activeWordRibbonTab = 'ai'"
+      >
+        <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13" style="margin-right: 3px;">
+          <path fill="currentColor" d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z"/>
+        </svg>
+        AI 助手
+      </button>
+    </div>
+
+    <!-- 3. Word Ribbon Functional Content Panels -->
+    <div class="word-ribbon-content-panel" v-if="editor && meta.doc_type !== 'pdf'" v-show="meta.can_edit">
+
+      <!-- ── Tab 1: 开始 (Home) ── -->
+      <div v-show="activeWordRibbonTab === 'home'" class="word-ribbon-tab-pane">
+        
+        <!-- Group 1: 剪贴板 (Clipboard) -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="handleWordPaste" title="粘贴 (Ctrl+V)">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <span>粘贴</span>
+            </button>
+
+            <div class="ribbon-small-stack">
+              <button class="ribbon-mini-btn" @click="handleWordCut" title="剪切 (Ctrl+X)">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <circle cx="6" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <circle cx="6" cy="18" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="8.59" y1="7.41" x2="20" y2="18.82" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="8.59" y1="16.59" x2="20" y2="5.18" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+                <span>剪切</span>
+              </button>
+              <button class="ribbon-mini-btn" @click="handleWordCopy" title="复制 (Ctrl+C)">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <rect x="9" y="9" width="13" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <path fill="none" stroke="currentColor" stroke-width="1.8" d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <span>复制</span>
+              </button>
+              <button class="ribbon-mini-btn" :class="{ active: isWordFormatPainting }" @click="toggleWordFormatPainter" title="格式刷">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M18.37 2.63L14 7l3 3 4.37-4.37a2.12 2.12 0 1 0-3-3zM14 7L4 17l-1 4 4-1 10-10"/>
+                </svg>
+                <span>格式刷</span>
+              </button>
+            </div>
+          </div>
+          <div class="group-label">剪贴板</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group 2: 字体 (Font) -->
+        <div class="ribbon-group">
+          <div class="group-controls-col">
+            <!-- Row 1: Font Select, Size Select, Step buttons, Clear Formats -->
+            <div class="sub-row">
+              <el-select v-model="currentFontFamily" size="small" style="width: 110px" @change="setFontFamily">
+                <el-option label="默认字体" value="Inter, sans-serif" />
+                <el-option label="宋体" value="SimSun, serif" />
+                <el-option label="微软雅黑" value="Microsoft YaHei, sans-serif" />
+                <el-option label="Arial" value="Arial" />
+                <el-option label="Times New Roman" value="'Times New Roman', serif" />
+                <el-option label="Georgia" value="Georgia" />
+                <el-option label="Courier New" value="Courier New" />
+              </el-select>
+
+              <el-select v-model="currentFontSize" size="small" style="width: 75px" @change="setFontSize">
+                <el-option v-for="size in ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '36px']" :key="size" :label="size" :value="size" />
+              </el-select>
+
+              <button class="ribbon-btn-square" @click="stepWordFontSize(2)" title="增大字号">A<sup>+</sup></button>
+              <button class="ribbon-btn-square" @click="stepWordFontSize(-2)" title="减小字号">A<sup>-</sup></button>
+              <button class="ribbon-btn-square" @click="editor.chain().focus().unsetAllMarks().clearNodes().run()" title="清除格式">
+                <span style="font-size: 11px;">✕</span>
+              </button>
+            </div>
+
+            <!-- Row 2: B, I, U, S, Highlighting, Font Color -->
+            <div class="sub-row">
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('bold') }" @click="editor.chain().focus().toggleBold().run()" title="加粗 (Ctrl+B)">
+                <b>B</b>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('italic') }" @click="editor.chain().focus().toggleItalic().run()" title="倾斜 (Ctrl+I)">
+                <i>I</i>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('underline') }" @click="editor.chain().focus().toggleUnderline().run()" title="下划线 (Ctrl+U)">
+                <u>U</u>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('strike') }" @click="editor.chain().focus().toggleStrike().run()" title="删除线">
+                <s>S</s>
+              </button>
+
+              <!-- Text Highlight Pen -->
+              <div class="ribbon-color-btn" title="文本高亮">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 19l7-7 3 3-7 7-3-3z"/>
+                  <path fill="none" stroke="currentColor" stroke-width="1.8" d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18"/>
+                  <path fill="currentColor" d="M2 22h20v2H2z"/>
+                </svg>
+                <span class="color-stripe" :style="{ backgroundColor: currentHighlight || '#fef08a' }"></span>
+                <input type="color" v-model="currentHighlight" @change="setHighlight" class="native-color-inp" />
+              </div>
+
+              <!-- Font Color Picker -->
+              <div class="ribbon-color-btn" title="字体颜色">
+                <span class="font-color-char">A</span>
+                <span class="color-stripe" :style="{ backgroundColor: currentColor || '#000000' }"></span>
+                <input type="color" v-model="currentColor" @change="setTextColor" class="native-color-inp" />
+              </div>
+            </div>
+          </div>
+          <div class="group-label">字体</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group 3: 段落 (Paragraph) -->
+        <div class="ribbon-group">
+          <div class="group-controls-col">
+            <!-- Row 1: Lists & Indents -->
+            <div class="sub-row">
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('bulletList') }" @click="editor.chain().focus().toggleBulletList().run()" title="项目符号列表">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <line x1="8" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2"/>
+                  <line x1="8" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2"/>
+                  <line x1="8" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2"/>
+                  <circle cx="4" cy="6" r="1.5" fill="currentColor"/>
+                  <circle cx="4" cy="12" r="1.5" fill="currentColor"/>
+                  <circle cx="4" cy="18" r="1.5" fill="currentColor"/>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()" title="编号列表">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <line x1="10" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2"/>
+                  <line x1="10" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2"/>
+                  <line x1="10" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2"/>
+                  <text x="3" y="8" font-size="7" font-weight="bold" fill="currentColor">1</text>
+                  <text x="3" y="14" font-size="7" font-weight="bold" fill="currentColor">2</text>
+                  <text x="3" y="20" font-size="7" font-weight="bold" fill="currentColor">3</text>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('taskList') }" @click="(editor.chain().focus() as any).toggleTaskList().run()" title="待办清单">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <rect x="3" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="12" y1="7" x2="21" y2="7" stroke="currentColor" stroke-width="2"/>
+                  <rect x="3" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="12" y1="17" x2="21" y2="17" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" @click="doOutdent" title="减少缩进">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <polyline points="7 8 3 12 7 16" stroke="currentColor" stroke-width="1.8" fill="none"/>
+                  <line x1="21" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="2"/>
+                  <line x1="21" y1="12" x2="11" y2="12" stroke="currentColor" stroke-width="2"/>
+                  <line x1="21" y1="18" x2="11" y2="18" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" @click="doIndent" title="增加缩进">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <polyline points="3 8 7 12 3 16" stroke="currentColor" stroke-width="1.8" fill="none"/>
+                  <line x1="21" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="2"/>
+                  <line x1="21" y1="12" x2="11" y2="12" stroke="currentColor" stroke-width="2"/>
+                  <line x1="21" y1="18" x2="11" y2="18" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Row 2: Alignments, Blockquote, Code Block -->
+            <div class="sub-row">
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive({ textAlign: 'left' }) }" @click="editor.chain().focus().setTextAlign('left').run()" title="左对齐">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="4" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive({ textAlign: 'center' }) }" @click="editor.chain().focus().setTextAlign('center').run()" title="居中对齐">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive({ textAlign: 'right' }) }" @click="editor.chain().focus().setTextAlign('right').run()" title="右对齐">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="6" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive({ textAlign: 'justify' }) }" @click="editor.chain().focus().setTextAlign('justify').run()" title="两端对齐">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('blockquote') }" @click="editor.chain().focus().toggleBlockquote().run()" title="引用块">
+                <span style="font-family: serif; font-size: 13px; font-weight: bold;">“</span>
+              </button>
+              <button class="ribbon-btn-square" :class="{ active: editor.isActive('codeBlock') }" @click="editor.chain().focus().toggleCodeBlock().run()" title="代码块">
+                <span style="font-family: monospace; font-size: 11px; font-weight: bold;">&lt;/&gt;</span>
+              </button>
+            </div>
+          </div>
+          <div class="group-label">段落</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group 4: 样式 (Styles - Word Quick Heading Cards) -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <div class="word-styles-card-group">
+              <button 
+                class="style-preset-btn" 
+                :class="{ active: editor.isActive('paragraph') }"
+                @click="editor.chain().focus().setParagraph().run()"
+              >
+                <div class="style-preview-text norm">AaBbCc</div>
+                <div class="style-name">正文</div>
+              </button>
+              <button 
+                class="style-preset-btn" 
+                :class="{ active: editor.isActive('heading', { level: 1 }) }"
+                @click="editor.chain().focus().toggleHeading({ level: 1 }).run()"
+              >
+                <div class="style-preview-text h1">AaBbCc</div>
+                <div class="style-name">标题 1</div>
+              </button>
+              <button 
+                class="style-preset-btn" 
+                :class="{ active: editor.isActive('heading', { level: 2 }) }"
+                @click="editor.chain().focus().toggleHeading({ level: 2 }).run()"
+              >
+                <div class="style-preview-text h2">AaBbCc</div>
+                <div class="style-name">标题 2</div>
+              </button>
+              <button 
+                class="style-preset-btn" 
+                :class="{ active: editor.isActive('heading', { level: 3 }) }"
+                @click="editor.chain().focus().toggleHeading({ level: 3 }).run()"
+              >
+                <div class="style-preview-text h3">AaBbCc</div>
+                <div class="style-name">标题 3</div>
+              </button>
+            </div>
+          </div>
+          <div class="group-label">样式</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group 5: 编辑 (Editing) -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <div class="ribbon-small-stack">
+              <button class="ribbon-mini-btn" @click="searchVisible = !searchVisible">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <circle cx="11" cy="11" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+                <span>查找和替换</span>
+              </button>
+              <button class="ribbon-mini-btn" @click="importDocx">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="13" height="13">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="12" y1="18" x2="12" y2="12" stroke="currentColor" stroke-width="1.8"/>
+                  <polyline points="9 15 12 12 15 15" stroke="currentColor" stroke-width="1.8" fill="none"/>
+                </svg>
+                <span>导入 Word (.docx)</span>
+              </button>
+            </div>
+          </div>
+          <div class="group-label">编辑</div>
+        </div>
+
+      </div>
+
+      <!-- ── Tab 2: 插入 (Insert) ── -->
+      <div v-show="activeWordRibbonTab === 'insert'" class="word-ribbon-tab-pane">
+        <!-- Group: 表格 -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="insertCustomTable">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="3" y1="15" x2="21" y2="15" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+              <span>插入表格</span>
+            </button>
+
+            <!-- Active Table Tools -->
+            <div class="ribbon-small-stack" v-if="editor && editor.isActive('table')">
+              <button class="ribbon-mini-btn" @click="editor.chain().focus().addRowBefore().run()">+ 上方插入行</button>
+              <button class="ribbon-mini-btn" @click="editor.chain().focus().addRowAfter().run()">+ 下方插入行</button>
+              <button class="ribbon-mini-btn" @click="editor.chain().focus().addColumnBefore().run()">+ 左侧插入列</button>
+            </div>
+            <div class="ribbon-small-stack" v-if="editor && editor.isActive('table')">
+              <button class="ribbon-mini-btn" @click="editor.chain().focus().addColumnAfter().run()">+ 右侧插入列</button>
+              <button class="ribbon-mini-btn" style="color:#ef4444;" @click="editor.chain().focus().deleteRow().run()">- 删除当前行</button>
+              <button class="ribbon-mini-btn" style="color:#ef4444;" @click="editor.chain().focus().deleteColumn().run()">- 删除当前列</button>
+            </div>
+          </div>
+          <div class="group-label">表格</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group: 插图与多媒体 -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="insertImage">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                <polyline points="21 15 16 10 5 21" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              </svg>
+              <span>插入图片</span>
+            </button>
+
+            <div class="ribbon-small-stack" v-if="editor && editor.isActive('image')">
+              <button class="ribbon-mini-btn" @click="setImgWidth('100%')">图片 100%</button>
+              <button class="ribbon-mini-btn" @click="setImgWidth('50%')">图片 50%</button>
+              <button class="ribbon-mini-btn" @click="setImgWidth('25%')">图片 25%</button>
+            </div>
+
+            <button 
+              class="ribbon-big-btn"
+              :class="{ active: isRecording }"
+              @click="isRecording ? stopRecording() : startRecording()"
+            >
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20" :style="{ color: isRecording ? '#ef4444' : '#475569' }">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <span>{{ isRecording ? `录音中(${recordingSeconds}s)` : '会议录音' }}</span>
+            </button>
+          </div>
+          <div class="group-label">插图与多媒体</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group: 页面元素 -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="editor.chain().focus().setHorizontalRule().run()">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span>水平分割线</span>
+            </button>
+          </div>
+          <div class="group-label">页面符号</div>
+        </div>
+
+      </div>
+
+      <!-- ── Tab 3: 页面布局 (Page Layout) ── -->
+      <div v-show="activeWordRibbonTab === 'layout'" class="word-ribbon-tab-pane">
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="pageSettingsVisible = true">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <rect x="4" y="2" width="16" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="8" y1="6" x2="16" y2="6" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="8" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+              <span>页面设置</span>
+            </button>
+            <button class="ribbon-big-btn" @click="downloadDocx">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <span>导出 Word (.docx)</span>
+            </button>
+            <button class="ribbon-big-btn" @click="downloadPdf">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+              <span>导出 PDF</span>
+            </button>
+          </div>
+          <div class="group-label">页面设置与输出</div>
+        </div>
+      </div>
+
+      <!-- ── Tab 4: 审阅 (Review) ── -->
+      <div v-show="activeWordRibbonTab === 'review'" class="word-ribbon-tab-pane">
+        <!-- Group: 批注与审阅 -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="addCommentOnSelection">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="12" y1="8" x2="12" y2="14" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="9" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <span>新建批注</span>
+            </button>
+            <button class="ribbon-big-btn" @click="activeSideTab = 'comments'">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <span>批注面板</span>
+            </button>
+          </div>
+          <div class="group-label">批注</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group: 智能校对 -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="runContractProofread" :disabled="proofreading">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2" fill="none"/>
+              </svg>
+              <span>合同校对</span>
+            </button>
+            <button class="ribbon-big-btn" @click="runLogicCheck" :disabled="checkingLogic">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="12" y1="16" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
+                <line x1="12" y1="8" x2="12.01" y2="8" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span>逻辑检查</span>
+            </button>
+            <button class="ribbon-big-btn" @click="runPunctuationCheck" :disabled="checkingPunctuation">
+              <span style="font-family: serif; font-size: 16px; font-weight: bold;">，。</span>
+              <span>标点检查</span>
+            </button>
+          </div>
+          <div class="group-label">智能校对</div>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Group: 版本 -->
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn" @click="activeSideTab = 'versions'">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="1.8" fill="none"/>
+              </svg>
+              <span>版本历史</span>
+            </button>
+          </div>
+          <div class="group-label">版本管理</div>
+        </div>
+      </div>
+
+      <!-- ── Tab 5: AI 助手 (AI Copilot) ── -->
+      <div v-show="activeWordRibbonTab === 'ai'" class="word-ribbon-tab-pane">
+        <div class="ribbon-group">
+          <div class="group-controls-row">
+            <button class="ribbon-big-btn ai-special-btn" @click="handleAiAction('summarize')">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="2"/>
+                <line x1="4" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="2"/>
+                <line x1="4" y1="18" x2="12" y2="18" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span>智能总结</span>
+            </button>
+            <button class="ribbon-big-btn ai-special-btn" @click="handleAiAction('expand')">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <polyline points="15 3 21 3 21 9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <polyline points="9 21 3 21 3 15" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="21" y1="3" x2="14" y2="10" stroke="currentColor" stroke-width="1.8"/>
+                <line x1="3" y1="21" x2="10" y2="14" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <span>智能扩写</span>
+            </button>
+            <button class="ribbon-big-btn ai-special-btn" @click="handleAiAction('polish')">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path fill="currentColor" d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z"/>
+              </svg>
+              <span>语法与润色</span>
+            </button>
+            <button class="ribbon-big-btn ai-special-btn" @click="handleAiAction('translate_en')">
+              <span style="font-size: 13px; font-weight: bold;">EN</span>
+              <span>翻译为英文</span>
+            </button>
+            <button class="ribbon-big-btn ai-special-btn" @click="handleAiAction('translate_zh')">
+              <span style="font-size: 13px; font-weight: bold;">中</span>
+              <span>翻译为中文</span>
+            </button>
+            <button class="ribbon-big-btn ai-special-btn" @click="activeSideTab = 'ai'">
+              <svg class="svg-icon big-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <span>AI 对话助手</span>
+            </button>
+          </div>
+          <div class="group-label">AI 智能文档 Copilot</div>
+        </div>
       </div>
 
     </div>
@@ -617,9 +1096,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter, onBeforeRouteLeave } from "vue-router";
 import ThinkingNineLoader from "@/components/ThinkingNineLoader.vue";
 import LowCodeFormCardView from "@/components/LowCodeFormCardView.vue";
+import SpreadsheetEditorView from "@/components/SpreadsheetEditorView.vue";
 import { useI18n } from "vue-i18n";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
@@ -711,6 +1191,90 @@ const isLowCodeDoc = computed(() => {
          !!meta.value?.template_schema || 
          !!meta.value?.form_data;
 });
+
+const isGeneratingTitle = ref(false);
+
+const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+  if (isGeneratingTitle.value) {
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload);
+});
+
+onBeforeRouteLeave((_to, _from, next) => {
+  if (isGeneratingTitle.value) {
+    ElMessage.warning(t('editor.aiGeneratingTitleBlock', 'AI 正在自动识别并填写标题，请勿离开...'));
+    next(false);
+  } else {
+    next();
+  }
+});
+
+async function handleGenerateTitle() {
+  if (isGeneratingTitle.value) return;
+
+  let text = "";
+  if (editor.value) {
+    text = editor.value.getText().trim();
+  }
+
+  if (!text || text.length < 5) {
+    ElMessage.warning(t("editor.aiTitleEmptyWarning", "文档内容过少或为空，无法识别生成标题，请先录入文档内容。"));
+    return;
+  }
+
+  isGeneratingTitle.value = true;
+  const loadingInstance = ElLoading.service({
+    lock: true,
+    text: "AI 正在深度识别文档信息并提炼精简标题，请勿离开...",
+    background: "rgba(0, 0, 0, 0.45)",
+  });
+
+  try {
+    const { data } = await api.post("/ai/generate-title", {
+      content: text.slice(0, 4000),
+      doc_id: docId.value,
+      doc_type: meta.value?.doc_type || "rich_text",
+      ai_model: aiStore?.selectedModel || "deepseek"
+    });
+
+    if (data && data.title && data.title !== "无法识别") {
+      title.value = data.title;
+      await saveTitle();
+      ElMessage.success(t("editor.aiTitleSuccess", { title: data.title }));
+    } else {
+      ElMessage.warning(data?.error || t("editor.aiTitleUnrecognized", "无法确定文档的总结内容，无法识别生成有效标题。"));
+    }
+  } catch (err: any) {
+    console.error("AI Title generation error:", err);
+    const msg = err.response?.data?.error || t("editor.aiTitleUnrecognized", "无法确定文档的总结内容，无法识别生成有效标题。");
+    ElMessage.warning(msg);
+  } finally {
+    isGeneratingTitle.value = false;
+    loadingInstance.close();
+  }
+}
+
+function goBack() {
+  if (isGeneratingTitle.value) {
+    ElMessage.warning(t('editor.aiGeneratingTitleBlock', 'AI 正在自动识别并填写标题，请勿离开...'));
+    return;
+  }
+  if (window.history.state?.back || window.history.length > 1) {
+    router.back();
+  } else {
+    router.push({ name: "library" });
+  }
+}
 
 const isVerifying = ref(false);
 
@@ -1626,6 +2190,43 @@ const page = ref({
 const saveHint = ref("");
 const collabColors = ref<Array<{ name: string; color: string }>>([]);
 
+const activeWordRibbonTab = ref('home');
+const isWordFormatPainting = ref(false);
+
+function handleWordCut() {
+  document.execCommand('cut');
+}
+
+function handleWordCopy() {
+  document.execCommand('copy');
+  ElMessage.success('已复制到剪贴板');
+}
+
+async function handleWordPaste() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text && editor.value) {
+      editor.value.chain().focus().insertContent(text).run();
+    }
+  } catch {
+    ElMessage.info('可使用快捷键 Ctrl+V 直接粘贴');
+  }
+}
+
+function toggleWordFormatPainter() {
+  isWordFormatPainting.value = !isWordFormatPainting.value;
+  if (isWordFormatPainting.value) {
+    ElMessage.info('已开启格式刷，请选中要应用样式的文本');
+  }
+}
+
+function stepWordFontSize(delta: number) {
+  const curStr = currentFontSize.value || '16px';
+  const num = parseInt(curStr, 10) || 16;
+  const next = Math.max(9, Math.min(72, num + delta));
+  setFontSize(`${next}px`);
+}
+
 const currentFontFamily = ref("Inter, sans-serif");
 const currentFontSize = ref("16px");
 const currentColor = ref("#000000");
@@ -1742,6 +2343,7 @@ const editor = useEditor({
 
 let saveTimer = 0;
 function scheduleSave() {
+  if (meta.value?.doc_type === 'spreadsheet' || isLowCodeDoc.value) return;
   if (!meta.value.can_edit) return;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => saveNow(), 2000);
@@ -1926,6 +2528,13 @@ async function loadDoc(silent = false) {
             console.error("解析页面设置失败:", e);
         }
     }
+
+    // 💡 针对表格和低代码表单文档，由专用独立子组件负责内容加载、保存和协同，严禁 TipTap/Yjs 介入避免内容被覆盖清空
+    if (data.doc_type === 'spreadsheet' || isLowCodeDoc.value) {
+      console.log("[DEBUG] Spreadsheet/LowCode doc loaded, bypassing TipTap/Yjs pipeline");
+      return;
+    }
+
     // 防呆设计：允许编辑草稿，或者管理员编辑模板
     const isEditable = data.can_edit && (data.status === 'draft' || data.is_template);
     editor.value?.setEditable(isEditable);
@@ -1986,6 +2595,7 @@ async function loadDoc(silent = false) {
 }
 
 async function saveNow() {
+  if (meta.value?.doc_type === 'spreadsheet' || isLowCodeDoc.value) return;
   if (!editor.value || !meta.value.can_edit) return;
   if (!docId.value || isNaN(docId.value)) {
     console.error("[DEBUG] Attempted to save document with invalid ID:", docId.value);
@@ -2321,6 +2931,14 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
 }
+.back-btn {
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+.back-btn:hover {
+  transform: translateX(-2px);
+}
 .status-tag { margin-left: 8px; }
 .hint { font-size: 12px; color: var(--el-text-color-secondary); }
 
@@ -2344,6 +2962,355 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 .avatar-dot:first-child { margin-left: 0; }
+
+.word-ribbon-tabs-nav {
+  display: flex;
+  align-items: center;
+  background: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+  padding: 0 12px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.word-ribbon-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.word-ribbon-quick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #475569;
+  transition: all 0.15s;
+}
+
+.word-ribbon-quick-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.word-ribbon-tab-sep {
+  width: 1px;
+  height: 16px;
+  background: #cbd5e1;
+  margin: 0 4px;
+}
+
+.word-ribbon-tab-btn {
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+
+.word-ribbon-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+  color: #1e293b;
+}
+
+.word-ribbon-tab-btn.active {
+  background: #ffffff;
+  color: var(--el-color-primary);
+  font-weight: 600;
+  border-color: #cbd5e1 #cbd5e1 #ffffff;
+  margin-bottom: -1px;
+  z-index: 2;
+}
+
+.word-ribbon-tab-btn.ai-tab-btn {
+  color: #7c3aed;
+}
+
+.word-ribbon-tab-btn.ai-tab-btn.active {
+  color: #7c3aed;
+  background: #ffffff;
+}
+
+.word-ribbon-content-panel {
+  background: #ffffff;
+  border-bottom: 1px solid #cbd5e1;
+  padding: 4px 12px 2px 12px;
+  height: 98px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.word-ribbon-tab-pane {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  gap: 6px;
+}
+
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0 4px;
+  height: 100%;
+}
+
+.group-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.group-controls-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.sub-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.group-label {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  padding-bottom: 2px;
+  user-select: none;
+  font-weight: 500;
+}
+
+.ribbon-divider {
+  width: 1px;
+  height: 70px;
+  background: #e2e8f0;
+  margin: auto 4px;
+  flex-shrink: 0;
+}
+
+.ribbon-big-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 64px;
+  padding: 4px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #334155;
+  font-size: 11px;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.ribbon-big-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ribbon-big-btn.active {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #0284c7;
+}
+
+.ribbon-big-btn.ai-special-btn {
+  color: #6d28d9;
+}
+
+.ribbon-big-btn.ai-special-btn:hover {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.ribbon-small-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.ribbon-mini-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #334155;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.ribbon-mini-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ribbon-mini-btn.active {
+  background: #e0f2fe;
+  color: #0284c7;
+  border-color: #7dd3fc;
+}
+
+.ribbon-btn-square {
+  width: 24px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #334155;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.ribbon-btn-square:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ribbon-btn-square.active {
+  background: #e0f2fe;
+  color: #0284c7;
+  border-color: #7dd3fc;
+}
+
+.ribbon-color-btn {
+  position: relative;
+  width: 24px;
+  height: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.ribbon-color-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.font-color-char {
+  font-weight: 900;
+  font-size: 13px;
+  line-height: 12px;
+}
+
+.color-stripe {
+  position: absolute;
+  bottom: 2px;
+  width: 16px;
+  height: 3px;
+  border-radius: 1px;
+}
+
+.native-color-inp {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.word-styles-card-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.style-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 62px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 4px;
+  transition: all 0.15s;
+}
+
+.style-preset-btn:hover {
+  border-color: #3b82f6;
+  background: #f8fafc;
+}
+
+.style-preset-btn.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.style-preview-text {
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.style-preview-text.norm {
+  font-size: 12px;
+}
+
+.style-preview-text.h1 {
+  font-size: 14px;
+  font-weight: bold;
+  color: #1e3a8a;
+}
+
+.style-preview-text.h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.style-preview-text.h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.style-name {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 4px;
+}
 
 .editor-toolbar {
   display: flex;

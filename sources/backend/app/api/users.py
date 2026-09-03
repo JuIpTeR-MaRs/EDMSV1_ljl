@@ -321,6 +321,9 @@ def create_user():
         role_id=role.id if role else None,
         position_short=data.get("position_short", ""),
         gender=data.get("gender", ""),
+        phone=str(data.get("phone", "")).strip(),
+        email=str(data.get("email", "")).strip(),
+        avatar_url=str(data.get("avatar_url", "")).strip(),
         is_manager=is_mgr,
         is_super_admin=is_super,
         registration_status="active"
@@ -337,25 +340,48 @@ def get_me():
     user = current_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
+    from app.api.auth import get_user_direct_supervisor
+    from app.models.core import Position
+    from datetime import date
+    pos_obj = Position.query.filter_by(short_name=user.position_short).first() if user.position_short else None
+    age = None
+    if user.birth_date:
+        today = date.today()
+        age = today.year - user.birth_date.year - ((today.month, today.day) < (user.birth_date.month, user.birth_date.day))
     return jsonify({
         "id": user.id,
         "employee_no": user.employee_no,
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "display_name": user.display_name(),
         "patronymic": user.patronymic,
         "login_name": user.login_name,
+        "phone": user.phone or "",
+        "email": user.email or "",
+        "avatar_url": user.avatar_url or "",
         "gender": user.gender,
-        "birth_date": user.birth_date.isoformat() if user.birth_date else None,
+        "birth_date": user.birth_date.strftime("%Y-%m-%d") if user.birth_date else None,
+        "age": age,
         "department_id": user.department_id,
         "department_name": user.department.name if user.department else None,
         "department_name_en": user.department.name_en if user.department else None,
+        "department": {
+            "id": user.department.id if user.department else None,
+            "name": user.department.name if user.department else "",
+            "name_en": user.department.name_en if user.department else ""
+        } if user.department else None,
+        "position": user.position_short,
+        "position_short": user.position_short,
+        "position_full_name": pos_obj.full_name if pos_obj else (user.position_short or ""),
+        "position_full_name_en": pos_obj.full_name_en if pos_obj else (user.position_short or ""),
         "role_id": user.role_id,
-        "role_name": user.role.name if user.role else user.role_title,
-        "role_name_en": user.role.name_en if user.role else None,
+        "role_name": user.role.name if user.role else ("系统最高决策者" if user.is_super_admin else ("部门主管" if user.is_manager else "普通员工")),
+        "role_name_en": user.role.name_en if (user.role and user.role.name_en) else ("Super Administrator" if user.is_super_admin else ("Department Supervisor" if user.is_manager else "Regular User")),
         "role_level": user.role_level,
         "role_code": user.role.code if user.role else ("super_admin" if user.is_super_admin else ("dept_manager" if user.is_manager else "staff")),
         "is_manager": user.is_manager or (user.role and user.role.level >= 50),
-        "is_super_admin": user.is_super_admin or (user.role and user.role.level >= 100)
+        "is_super_admin": user.is_super_admin or (user.role and user.role.level >= 100),
+        "direct_supervisor": get_user_direct_supervisor(user)
     })
 
 @bp.get("/me/stats")
@@ -475,6 +501,8 @@ def list_users():
             (func.lower(User.last_name).like(s)) |
             (func.lower(User.login_name).like(s)) |
             (func.lower(User.employee_no).like(s)) |
+            (func.lower(User.phone).like(s)) |
+            (func.lower(User.email).like(s)) |
             (func.lower(User.position_short).like(s)) |
             (func.concat(func.lower(User.last_name), func.lower(User.first_name)).like(s)) |
             (func.concat(func.lower(User.last_name), " ", func.lower(User.first_name)).like(s))
@@ -533,6 +561,12 @@ def list_users():
             "employee_no": u.employee_no,
             "login_name": u.login_name,
             "display_name": u.display_name(),
+            "phone": u.phone or "",
+            "email": u.email or "",
+            "avatar_url": u.avatar_url or "",
+            "gender": u.gender or "",
+            "birth_date": u.birth_date.strftime("%Y-%m-%d") if u.birth_date else None,
+            "position_short": u.position_short or "",
             "department_id": u.department_id,
             "department_name": u.department.name if u.department else None,
             "department_name_en": u.department.name_en if u.department else None,
@@ -545,6 +579,57 @@ def list_users():
             "is_super_admin": u.is_super_admin or (u.role and u.role.level >= 100)
         })
     return jsonify({"total": total, "items": items})
+
+@bp.get("/<int:user_id>")
+@jwt_required()
+def get_user_detail(user_id: int):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    from app.api.auth import get_user_direct_supervisor
+    from app.models.core import Position
+    from datetime import date
+    pos_obj = Position.query.filter_by(short_name=user.position_short).first() if user.position_short else None
+    age = None
+    if user.birth_date:
+        today = date.today()
+        age = today.year - user.birth_date.year - ((today.month, today.day) < (user.birth_date.month, user.birth_date.day))
+    return jsonify({
+        "id": user.id,
+        "employee_no": user.employee_no,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "display_name": user.display_name(),
+        "patronymic": user.patronymic,
+        "login_name": user.login_name,
+        "phone": user.phone or "",
+        "email": user.email or "",
+        "avatar_url": user.avatar_url or "",
+        "gender": user.gender,
+        "birth_date": user.birth_date.strftime("%Y-%m-%d") if user.birth_date else None,
+        "age": age,
+        "department_id": user.department_id,
+        "department_name": user.department.name if user.department else None,
+        "department_name_en": user.department.name_en if user.department else None,
+        "department": {
+            "id": user.department.id if user.department else None,
+            "name": user.department.name if user.department else "",
+            "name_en": user.department.name_en if user.department else ""
+        } if user.department else None,
+        "position": user.position_short,
+        "position_short": user.position_short,
+        "position_full_name": pos_obj.full_name if pos_obj else (user.position_short or ""),
+        "position_full_name_en": pos_obj.full_name_en if pos_obj else (user.position_short or ""),
+        "role_id": user.role_id,
+        "role_name": user.role.name if user.role else ("系统最高决策者" if user.is_super_admin else ("部门主管" if user.is_manager else "普通员工")),
+        "role_name_en": user.role.name_en if (user.role and user.role.name_en) else ("Super Administrator" if user.is_super_admin else ("Department Supervisor" if user.is_manager else "Regular User")),
+        "role_level": user.role_level,
+        "role_code": user.role.code if user.role else ("super_admin" if user.is_super_admin else ("dept_manager" if user.is_manager else "staff")),
+        "is_manager": user.is_manager or (user.role and user.role.level >= 50),
+        "is_super_admin": user.is_super_admin or (user.role and user.role.level >= 100),
+        "registration_status": user.registration_status,
+        "direct_supervisor": get_user_direct_supervisor(user)
+    })
 
 @bp.patch("/<int:user_id>")
 @jwt_required()
@@ -587,19 +672,27 @@ def update_user(user_id: int):
     if "last_name" in data: target_user.last_name = data["last_name"]
     if "patronymic" in data: target_user.patronymic = data["patronymic"]
     if "gender" in data: target_user.gender = data["gender"]
+    if "phone" in data: target_user.phone = str(data["phone"] or "").strip()
+    if "email" in data: target_user.email = str(data["email"] or "").strip()
+    if "avatar_url" in data: target_user.avatar_url = str(data["avatar_url"] or "").strip()
+    if "position_short" in data: target_user.position_short = str(data["position_short"] or "").strip()
     if "birth_date" in data:
         bd_str = data["birth_date"]
         target_user.birth_date = datetime.strptime(bd_str, "%Y-%m-%d").date() if bd_str else None
+
+    # Department modification: allowed for admins, or when target user has no department, or for self if manager/admin
+    can_change_dept = is_admin or is_super or target_user.department_id is None or (is_self and (c_user.is_manager or c_user.is_super_admin or (c_user.role and c_user.role.level >= 50)))
+    if can_change_dept and "department_id" in data:
+        dept_id = data["department_id"]
+        if dept_id:
+            target_user.department_id = int(dept_id)
+            target_user.department = db.session.get(Department, int(dept_id))
+        else:
+            target_user.department_id = None
+            target_user.department = None
         
     # Fields ONLY admin can change
     if is_admin:
-        if "department_id" in data:
-            dept_id = data["department_id"]
-            target_user.department_id = dept_id
-            if dept_id:
-                target_user.department = db.session.get(Department, dept_id)
-            else:
-                target_user.department = None
         
         if is_modifying_privileges:
             if "role_id" in data:
@@ -1016,3 +1109,64 @@ def get_org():
         "peers": peers,
         "department": user.department.name if user.department else "未分配部门"
     })
+
+
+# ── Avatar Upload & Customization Endpoints ──────────────────────────────────────────
+
+def _handle_avatar_upload(target_user: User):
+    import os, uuid
+    from flask import current_app
+    
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files["file"]
+    if not file or not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+    
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]:
+        return jsonify({"error": "Invalid file format. Only JPG, PNG, WebP, GIF, SVG allowed."}), 400
+    
+    storage_base = os.environ.get("STORAGE_PATH", current_app.root_path)
+    save_dir = os.path.join(storage_base, "static", "avatars")
+    os.makedirs(save_dir, exist_ok=True)
+    
+    filename = f"avatar_{target_user.id}_{uuid.uuid4().hex[:12]}{ext}"
+    save_path = os.path.join(save_dir, filename)
+    file.save(save_path)
+    
+    avatar_url = f"/static/avatars/{filename}"
+    target_user.avatar_url = avatar_url
+    db.session.commit()
+    
+    return jsonify({
+        "message": "Avatar uploaded successfully",
+        "avatar_url": avatar_url
+    })
+
+@bp.post("/avatar")
+@jwt_required()
+def upload_my_avatar():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    return _handle_avatar_upload(user)
+
+@bp.post("/<int:user_id>/avatar")
+@jwt_required()
+def upload_user_avatar(user_id: int):
+    c_user = current_user()
+    if not c_user:
+        return jsonify({"error": "Unauthorized"}), 401
+    target_user = db.session.get(User, user_id)
+    if not target_user:
+        return jsonify({"error": "User not found"}), 404
+    
+    is_super = bool(c_user.is_super_admin or (c_user.role and c_user.role.level >= 100))
+    is_admin = bool(c_user.is_manager or is_super or (c_user.role and (c_user.role.can_manage_users or c_user.role.can_manage_depts or c_user.role.level >= 50)))
+    
+    if c_user.id != target_user.id and not is_admin:
+        return jsonify({"error": "Forbidden"}), 403
+        
+    return _handle_avatar_upload(target_user)
+

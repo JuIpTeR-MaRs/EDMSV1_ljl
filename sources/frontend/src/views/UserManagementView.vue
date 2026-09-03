@@ -151,7 +151,19 @@
       >
         <el-table-column v-if="canManageUsers" type="selection" width="55" />
         <el-table-column prop="employee_no" :label="t('profile.employeeNo')" width="130" sortable="custom" />
-        <el-table-column prop="display_name" :label="t('common.name')" min-width="120" sortable="custom" />
+        <el-table-column prop="display_name" :label="t('common.name')" min-width="140" sortable="custom">
+          <template #default="{ row }">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="user-avatar-tiny">
+                <img v-if="row.avatar_url" :src="row.avatar_url" class="user-avatar-img-small" alt="avatar" />
+                <span v-else>{{ (row.display_name || row.username).slice(0, 1).toUpperCase() }}</span>
+              </div>
+              <el-button type="primary" link @click="openMemberProfileCard(row)" style="font-weight: 600; padding: 0;">
+                {{ row.display_name }}
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="login_name" :label="t('profile.loginName')" width="120" />
         <el-table-column prop="department_name" :label="t('profile.dept')" min-width="160" sortable="custom">
           <template #default="{ row }">
@@ -318,6 +330,7 @@
             @drop="handleTreeDrop"
             @member-drag-start="handleMemberDragStart"
             @member-drop="handleMemberDrop"
+            @member-click="handleTreeMemberClick"
             @add-child="handleAddChildDept"
             @edit="handleEditDeptNode"
             @delete="handleDeleteDeptNode"
@@ -372,11 +385,14 @@
           >
             <el-table-column :label="t('admin.memberInfo', '成员信息')" min-width="150">
               <template #default="{ row }">
-                <div class="user-row-cell">
-                  <div class="user-avatar-small">{{ (row.display_name || row.username).slice(0, 1).toUpperCase() }}</div>
+                <div class="user-row-cell clickable-user-cell" @click="openMemberProfileCard(row)" :title="t('personal.viewMemberProfile', '点击查看成员详细信息')">
+                  <div class="user-avatar-small">
+                    <img v-if="row.avatar_url" :src="row.avatar_url" class="user-avatar-img-small" alt="avatar" />
+                    <span v-else>{{ (row.display_name || row.username).slice(0, 1).toUpperCase() }}</span>
+                  </div>
                   <div>
                     <div class="user-cell-name">
-                      {{ row.display_name }}
+                      <span class="user-name-link">{{ row.display_name }}</span>
                       <el-tag v-if="row.is_manager || row.is_super_admin" size="small" type="danger" effect="dark" style="margin-left: 4px; height: 18px; line-height: 16px; padding: 0 4px;">
                         {{ t('admin.supervisorTag', '主管') }}
                       </el-tag>
@@ -391,9 +407,12 @@
                 <span class="level-pill" :class="getLevelClass(row.role_level)">{{ (locale === 'zh-CN' ? row.role_name : (row.role_name_en || row.role_name)) || t('common.roles.user', '普通员工') }}</span>
               </template>
             </el-table-column>
-            <el-table-column :label="t('common.actions', '操作')" width="190" align="center" fixed="right" v-if="isCurrentDeptManageable">
+            <el-table-column :label="t('common.actions', '操作')" width="210" align="center" fixed="right" v-if="isCurrentDeptManageable">
               <template #default="{ row }">
                 <div class="drawer-row-actions">
+                  <el-tooltip :content="t('personal.viewMemberProfile', '查看成员个人信息卡')" placement="top">
+                    <el-button circle size="small" :icon="User" type="primary" plain @click="openMemberProfileCard(row)" />
+                  </el-tooltip>
                   <el-tooltip :content="row.id === auth.user?.id ? t('admin.cannotChangeSelfSupervisor', '无法更改自己的主管权限') : (isUserSuperiorOrEqual(row) ? t('admin.cannotChangeSuperiorSupervisor', '无法更改同级/上级人员的主管权限') : (row.is_manager ? t('admin.removeSupervisor', '取消主管身份') : t('admin.setSupervisor', '设为部门主管')))" placement="top">
                     <span>
                       <el-button 
@@ -680,6 +699,16 @@
         <el-form-item :label="t('profile.lastName')" required>
           <el-input v-model="userForm.last_name" />
         </el-form-item>
+        <el-form-item :label="t('profile.phone', '手机号码')">
+          <el-input v-model="userForm.phone" :placeholder="t('profile.phonePlaceholder', '请输入手机号码')" clearable>
+            <template #prefix><el-icon><Phone /></el-icon></template>
+          </el-input>
+        </el-form-item>
+        <el-form-item :label="t('profile.email', '电子邮箱')">
+          <el-input v-model="userForm.email" :placeholder="t('profile.emailPlaceholder', '请输入电子邮箱')" clearable>
+            <template #prefix><el-icon><Message /></el-icon></template>
+          </el-input>
+        </el-form-item>
         <el-form-item v-if="auth.user?.is_super_admin || auth.user?.is_manager || (auth.user?.role_level && auth.user?.role_level >= 50)" :label="t('profile.dept')" required>
           <el-select v-model="userForm.department_id" style="width: 100%" :placeholder="t('profile.selectDept', '请选择所属部门')">
             <el-option 
@@ -736,6 +765,14 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- ── Member Personal Profile Mini-Card Dialog ──────────────── -->
+    <MemberProfileCardDialog
+      v-model="memberCardDialogVisible"
+      :user="currentSelectedMemberForCard"
+      :can-edit="canManageUsers"
+      @edit-user="handleEditFromMemberCard"
+    />
   </div>
 </template>
 
@@ -746,11 +783,12 @@ import api from "@/api/client";
 import { 
   Plus, Delete, Edit, User, Search, Setting, List, Share,
   ZoomIn, ZoomOut, Aim, FolderOpened, Folder, FullScreen,
-  Switch, Key, UserFilled, Refresh, Sort
+  Switch, Key, UserFilled, Refresh, Sort, Phone, Message
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import OrgTreeNode, { type OrgTreeNodeData, type TreeDropPayload } from "@/components/OrgTreeNode.vue";
+import MemberProfileCardDialog from "@/components/MemberProfileCardDialog.vue";
 
 const { t, locale, te } = useI18n();
 const auth = useAuthStore();
@@ -758,6 +796,31 @@ const viewMode = ref<"list" | "chart">("chart");
 const users = ref<any[]>([]);
 const rolesList = ref<any[]>([]);
 const deptOptions = ref<any[]>([]);
+
+// ── Member Profile Card State ──────────────────────────────────────────
+const memberCardDialogVisible = ref(false);
+const currentSelectedMemberForCard = ref<any>(null);
+
+function openMemberProfileCard(member: any) {
+  if (!member) return;
+  currentSelectedMemberForCard.value = member;
+  memberCardDialogVisible.value = true;
+}
+
+function handleTreeMemberClick(member: any, node: OrgTreeNodeData) {
+  const fullMember = {
+    ...member,
+    department_name: node.type === 'root' ? null : node.name,
+    department_name_en: node.type === 'root' ? null : node.name_en,
+    department_id: node.type === 'root' ? null : Number(node.id)
+  };
+  openMemberProfileCard(fullMember);
+}
+
+function handleEditFromMemberCard(targetUser: any) {
+  memberCardDialogVisible.value = false;
+  editUser(targetUser);
+}
 
 // 💡 列表模式排序状态
 const sortBy = ref<string>("level");
@@ -775,12 +838,18 @@ const canManageUsers = computed(() => {
 
 const formatDeptName = (name: string, nameEn?: string) => {
   if (!name) return "";
+  if (name.includes("最高管理与决策中心") || name === "Board & Executive" || name === "BOARD_EXEC") {
+    return locale.value === 'zh-CN' ? '企业最高管理与决策中心 (Board & Executive)' : 'Executive Governance Center (Board & Executive)';
+  }
   if (te(`dept.${name}`)) return t(`dept.${name}`);
   if (nameEn && te(`dept.${nameEn}`)) return t(`dept.${nameEn}`);
   return locale.value === 'zh-CN' ? name : (nameEn || name);
 };
 
 const formatDeptDisplayName = (d: any) => {
+  if (d.level >= 100 || d.code === 'BOARD_EXEC' || d.name?.includes('最高管理与决策中心')) {
+    return `🏛️ ${locale.value === 'zh-CN' ? '企业最高管理与决策中心 (Board & Executive)' : 'Executive Governance Center (Board & Executive)'}`;
+  }
   const base = formatDeptName(d.name, d.name_en);
   if (d.parent_name) {
     return `${base} (上级: ${formatDeptName(d.parent_name)})`;
@@ -843,9 +912,10 @@ const selectedDeptForMembers = ref<any>(null);
 
 const deptMembersList = computed(() => {
   if (!selectedDeptForMembers.value) return [];
-  if (selectedDeptForMembers.value.type === 'root') {
-    // 💡 仅展示属于最高决策中心/未分配下级部门的直属成员，不再包含下级各部门人员
-    return currentUsersList.value.filter(u => !u.department_id || !deptOptions.value.some(d => d.id === u.department_id));
+  const boardDept = deptOptions.value.find(d => d.code === 'BOARD_EXEC' || d.level === 100 || d.name.includes('最高管理与决策中心'));
+  const isRoot = selectedDeptForMembers.value.type === 'root' || (boardDept && Number(selectedDeptForMembers.value.id) === boardDept.id);
+  if (isRoot) {
+    return currentUsersList.value.filter(u => (boardDept && u.department_id === boardDept.id) || (!u.department_id || !deptOptions.value.some(d => d.id === u.department_id)));
   }
   const deptId = Number(selectedDeptForMembers.value.id);
   return currentUsersList.value.filter(u => u.department_id === deptId);
@@ -853,14 +923,16 @@ const deptMembersList = computed(() => {
 
 const currentSelectedDept = computed(() => {
   if (!selectedDeptForMembers.value) return null;
-  if (selectedDeptForMembers.value.type === 'root') {
-    const rootMembers = currentUsersList.value.filter(u => !u.department_id || !deptOptions.value.some(d => d.id === u.department_id));
+  const boardDept = deptOptions.value.find(d => d.code === 'BOARD_EXEC' || d.level === 100 || d.name.includes('最高管理与决策中心'));
+  const isRoot = selectedDeptForMembers.value.type === 'root' || (boardDept && Number(selectedDeptForMembers.value.id) === boardDept.id);
+  if (isRoot) {
+    const rootMembers = currentUsersList.value.filter(u => (boardDept && u.department_id === boardDept.id) || (!u.department_id || !deptOptions.value.some(d => d.id === u.department_id)));
     const leader = rootMembers.find(u => u.is_super_admin) || currentUsersList.value.find(u => u.is_super_admin);
     const rootTitle = locale.value === 'zh-CN' ? '企业最高管理与决策中心 (Board & Executive)' : 'Executive Governance Center';
     const rootLeaderRole = locale.value === 'zh-CN' ? '系统最高决策者' : (leader?.role_name_en || 'System Super Administrator');
     const rootBoardName = locale.value === 'zh-CN' ? '系统最高决策委员会' : 'Executive Governance Board';
     return {
-      id: 'root-decision',
+      id: boardDept ? boardDept.id : 'root-decision',
       name: rootTitle,
       name_en: 'Executive Governance Center',
       type: 'root',
@@ -917,7 +989,7 @@ const availableParentDeptOptions = computed(() => {
     return deptOptions.value;
   }
   const myDeptId = auth.user?.department_id;
-  if (!myDeptId) return [];
+  if (!myDeptId) return deptOptions.value;
   const getSubDeptIds = (pId: number): number[] => {
     const directChildren = deptOptions.value.filter(d => d.parent_id === pId).map(d => d.id);
     let all = [...directChildren];
@@ -1142,9 +1214,14 @@ const orgTreeData = computed<OrgTreeNodeData>(() => {
     }
   });
 
+  const boardDept = deptOptions.value.find(d => d.code === 'BOARD_EXEC' || d.level === 100 || d.name.includes('最高管理与决策中心'));
+
   // 2. Map all departments into raw OrgTreeNodeData
   const nodeMap = new Map<number, OrgTreeNodeData>();
   deptOptions.value.forEach(d => {
+    // If it's the boardDept, it will serve as the root node
+    if (boardDept && d.id === boardDept.id) return;
+
     const deptUsers = deptUsersMap.get(d.id) || [];
     // Find leader: manager, super_admin, or highest role_level
     let leader = deptUsers.find(u => u.is_manager || u.is_super_admin);
@@ -1172,7 +1249,7 @@ const orgTreeData = computed<OrgTreeNodeData>(() => {
   // 3. Assemble parent-child tree relationships
   const rootDepts: OrgTreeNodeData[] = [];
   nodeMap.forEach(node => {
-    if (node.parentId && nodeMap.has(node.parentId)) {
+    if (node.parentId && nodeMap.has(node.parentId) && (!boardDept || node.parentId !== boardDept.id)) {
       const parent = nodeMap.get(node.parentId)!;
       parent.children.push(node);
     } else {
@@ -1187,16 +1264,16 @@ const orgTreeData = computed<OrgTreeNodeData>(() => {
   rootDepts.sort((a, b) => (b.level - a.level) || a.name.localeCompare(b.name));
 
   // 4. Create Top Root Node: 企业最高管理与决策中心
-  // 💡 根节点仅包含未分配到下级具体部门或直属最高决策层的成员
-  const rootMembers = currentUsersList.value.filter(u => !u.department_id || !deptOptions.value.some(d => d.id === u.department_id));
+  const rootMembers = currentUsersList.value.filter(u => (boardDept && u.department_id === boardDept.id) || (!u.department_id || !deptOptions.value.some(d => d.id === u.department_id)));
   const rootLeader = rootMembers.find(u => u.is_super_admin) || currentUsersList.value.find(u => u.is_super_admin);
   const rootRoleLabel = locale.value === 'zh-CN' ? '系统最高决策者' : (rootLeader?.role_name_en || 'System Super Administrator');
   const rootBoardLabel = locale.value === 'zh-CN' ? '系统最高决策委员会' : 'Executive Governance Board';
   const rootNodeTitle = locale.value === 'zh-CN' ? '企业最高管理与决策中心 (Board & Executive)' : 'Executive Governance Center';
+  const rootNodeId = boardDept ? boardDept.id : 'root-decision';
   const rootNode: OrgTreeNodeData = {
-    id: 'root-decision',
+    id: rootNodeId,
     name: rootNodeTitle,
-    name_en: 'Executive Governance Center',
+    name_en: boardDept?.name_en || 'Executive Governance Center',
     type: 'root',
     level: 100,
     parentId: null,
@@ -1204,8 +1281,8 @@ const orgTreeData = computed<OrgTreeNodeData>(() => {
     memberCount: rootMembers.length,
     members: rootMembers,
     children: rootDepts,
-    collapsed: collapsedNodeIds.value.has('root-decision'),
-    raw: null
+    collapsed: collapsedNodeIds.value.has(rootNodeId) || collapsedNodeIds.value.has('root-decision'),
+    raw: boardDept || null
   };
 
   return rootNode;
@@ -1240,7 +1317,8 @@ async function handleMemberDrop({ member, sourceNode, targetNode }: { member: an
   if (!member || !targetNode) return;
   if (sourceNode.id === targetNode.id) return;
 
-  const targetDeptId = targetNode.type === 'root' ? null : Number(targetNode.id);
+  const boardDept = deptOptions.value.find(d => d.code === 'BOARD_EXEC' || d.level === 100 || d.name.includes('最高管理与决策中心'));
+  const targetDeptId = targetNode.type === 'root' ? (boardDept ? boardDept.id : null) : Number(targetNode.id);
   try {
     await api.patch(`/users/${member.id}`, {
       department_id: targetDeptId
@@ -1418,6 +1496,8 @@ function openAddUserForCurrentDept() {
     employee_no: "",
     first_name: "",
     last_name: "",
+    phone: "",
+    email: "",
     department_id: targetDeptId,
     role_id: defaultRole?.id ?? null
   };
@@ -1714,6 +1794,8 @@ const userForm = ref({
   employee_no: "",
   first_name: "",
   last_name: "",
+  phone: "",
+  email: "",
   department_id: null as number | null,
   role_id: null as number | null
 });
@@ -1771,6 +1853,8 @@ function openAddUser() {
     employee_no: "",
     first_name: "",
     last_name: "",
+    phone: "",
+    email: "",
     department_id: auth.user?.is_super_admin ? null : (auth.user?.department_id ?? null),
     role_id: defaultRole?.id ?? null
   };
@@ -1787,8 +1871,10 @@ function editUser(row: any) {
     login_name: row.login_name,
     password: "",
     employee_no: row.employee_no,
-    first_name: row.display_name.split(' ')[1] || row.display_name,
-    last_name: row.display_name.split(' ')[0] || "",
+    first_name: row.first_name || (row.display_name?.includes(' ') ? row.display_name.split(' ')[1] : row.display_name),
+    last_name: row.last_name || (row.display_name?.includes(' ') ? row.display_name.split(' ')[0] : ""),
+    phone: row.phone || "",
+    email: row.email || "",
     department_id: row.department_id,
     role_id: row.role_id || (rolesList.value.find(r => r.level === row.role_level)?.id ?? null)
   };
@@ -2291,10 +2377,31 @@ onMounted(() => {
   gap: 10px;
 }
 
+.clickable-user-cell {
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.clickable-user-cell:hover {
+  background: rgba(64, 158, 255, 0.08);
+}
+
+.clickable-user-cell:hover .user-name-link {
+  color: var(--el-color-primary);
+  text-decoration: underline;
+}
+
+.user-name-link {
+  transition: color 0.15s;
+}
+
 .user-avatar-small {
   width: 32px;
   height: 32px;
-  border-radius: 16px;
+  border-radius: 50%;
+  overflow: hidden;
   background: var(--el-color-primary);
   color: #ffffff;
   font-size: 13px;
@@ -2303,6 +2410,27 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.user-avatar-tiny {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--el-color-primary);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-avatar-img-small {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .user-cell-name {

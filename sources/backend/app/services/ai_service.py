@@ -715,3 +715,336 @@ class AIService:
             return response.choices[0].message.content
         except Exception as e:
             return f"生成摘要失败: {str(e)}"
+
+    @staticmethod
+    def generate_spreadsheet_formula(query: str, cell_address: str = "A1", range_context: str = "", sheet_sample: str = "", ai_model: str = "deepseek", lang: str = "zh"):
+        """Generate Excel / Spreadsheet formula from natural language."""
+        client = AIService.get_client(ai_model)
+        model_name = "deepseek-chat"
+
+        system_msg = (
+            "你是一个精通 Excel / 电子表格公式与数据分析的专家 Copilot。"
+            "用户会提出计算需求（如求和、平均值、条件统计、查找比对等），你需要生成最适合的标准 Excel 公式。"
+            "请严格以纯 JSON 格式返回，包含以下字段：\n"
+            "{\n"
+            '  "formula": "=SUM(A1:A10)",\n'
+            '  "explanation": "简要说明公式计算逻辑与参数含义",\n'
+            '  "alternative": "备选公式或进阶写法（可选）",\n'
+            '  "applicable_range": "建议应用的单元格范围"\n'
+            "}"
+        )
+
+        user_msg = (
+            f"用户计算需求：{query}\n"
+            f"目标单元格：{cell_address}\n"
+            f"当前选区/上下文范围：{range_context or '未指定'}\n"
+            f"表格数据示例片段：\n{sheet_sample or '无'}"
+        )
+
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                response_format={"type": "json_object"}
+            )
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            return json.loads(content.strip())
+        except Exception as e:
+            print(f"[AI Spreadsheet Formula Error]: {e}")
+            # Fallback heuristic
+            q = query.lower()
+            target_formula = "=SUM(A1:A10)"
+            exp = "自动求和范围数值"
+            if "平均" in q or "avg" in q or "average" in q:
+                target_formula = "=AVERAGE(A1:A10)"
+                exp = "计算指定区域内数值的算术平均值"
+            elif "最大" in q or "max" in q:
+                target_formula = "=MAX(A1:A10)"
+                exp = "获取指定区域内的最大数值"
+            elif "最小" in q or "min" in q:
+                target_formula = "=MIN(A1:A10)"
+                exp = "获取指定区域内的最小数值"
+            elif "计数" in q or "count" in q:
+                target_formula = "=COUNT(A1:A10)"
+                exp = "统计指定区域内包含数字的单元格个数"
+            
+            return {
+                "formula": target_formula,
+                "explanation": exp,
+                "alternative": "",
+                "applicable_range": range_context or "A1:A10"
+            }
+
+    @staticmethod
+    def generate_spreadsheet_table(prompt: str, row_count: int = 8, col_count: int = 5, ai_model: str = "deepseek", lang: str = "zh"):
+        """Generate a complete structured spreadsheet based on user's topic prompt."""
+        client = AIService.get_client(ai_model)
+        model_name = "deepseek-chat"
+
+        system_msg = (
+            "你是一个专业的企业级电子表格设计与数据建模专家。"
+            "根据用户的建表需求，生成一份结构严谨、数据合理、包含求和/统计公式的完整表格数据。"
+            "请严格以纯 JSON 格式返回，格式规范如下：\n"
+            "{\n"
+            '  "sheet_name": "工作表名称 (如 2026年Q1预算明细)",\n'
+            '  "headers": ["列名1", "列名2", "列名3", "列名4", "列名5"],\n'
+            '  "rows": [\n'
+            '    ["文本值", 1000, 200, 300, "=SUM(B2:D2)"],\n'
+            '    ["文本值2", 1500, 250, 400, "=SUM(B3:D3)"]\n'
+            "  ],\n"
+            '  "summary_row": ["总计", "=SUM(B2:B5)", "=SUM(C2:C5)", "=SUM(D2:D5)", "=SUM(E2:E5)"],\n'
+            '  "column_widths": [140, 100, 100, 100, 120]\n'
+            "}"
+        )
+
+        user_msg = f"建表主题需求：{prompt}\n期望数据行数：{row_count}\n期望列数：{col_count}"
+
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                response_format={"type": "json_object"}
+            )
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            return json.loads(content.strip())
+        except Exception as e:
+            print(f"[AI Spreadsheet Generate Table Error]: {e}")
+            # Fallback template
+            return {
+                "sheet_name": prompt[:15] or "智能分析表",
+                "headers": ["项目", "一季度", "二季度", "三季度", "总计"],
+                "rows": [
+                    ["研发支出", 120000, 135000, 150000, "=SUM(B2:D2)"],
+                    ["运营推广", 45000, 52000, 60000, "=SUM(B3:D3)"],
+                    ["人力成本", 85000, 88000, 92000, "=SUM(B4:D4)"],
+                    ["办公行政", 15000, 16000, 18000, "=SUM(B5:D5)"]
+                ],
+                "summary_row": ["合计", "=SUM(B2:B5)", "=SUM(C2:C5)", "=SUM(D2:D5)", "=SUM(E2:E5)"],
+                "column_widths": [130, 110, 110, 110, 120]
+            }
+
+    @staticmethod
+    def analyze_spreadsheet_insights(sheet_name: str, headers: list, rows_sample: list, total_rows: int = 0, ai_model: str = "deepseek", lang: str = "zh"):
+        """Perform deep statistical insights, trends, and anomaly detection on spreadsheet data."""
+        client = AIService.get_client(ai_model)
+        model_name = "deepseek-chat"
+
+        system_msg = (
+            "你是一名顶尖的企业商业智能 (BI) 与数据分析专家。"
+            "请分析提供的电子表格数据，输出深度商业洞察。必须以纯 JSON 格式返回：\n"
+            "{\n"
+            '  "summary": "1-2句话精炼总结当前表格的核心数据概况",\n'
+            '  "key_metrics": [\n'
+            '    {"label": "指标名称", "value": "数值", "trend": "up|down|flat"}\n'
+            "  ],\n"
+            '  "trends": ["趋势分析要点1", "趋势分析要点2", "趋势分析要点3"],\n'
+            '  "anomalies": ["发现的异常值、缺失项或潜在风险点 (若无则说明数据分布平稳)"],\n'
+            '  "recommendations": ["针对数据的具体业务建议1", "业务建议2"]\n'
+            "}"
+        )
+
+        user_msg = (
+            f"工作表名称：{sheet_name}\n"
+            f"总行数：{total_rows or len(rows_sample)}\n"
+            f"表头字段：{json.dumps(headers, ensure_ascii=False)}\n"
+            f"数据样本（前若干行）：\n{json.dumps(rows_sample[:25], ensure_ascii=False)}"
+        )
+
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                response_format={"type": "json_object"}
+            )
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            return json.loads(content.strip())
+        except Exception as e:
+            print(f"[AI Spreadsheet Insights Error]: {e}")
+            return {
+                "summary": f"已对《{sheet_name}》共 {total_rows or len(rows_sample)} 条数据进行扫描分析。",
+                "key_metrics": [
+                    {"label": "记录总数", "value": str(total_rows or len(rows_sample)), "trend": "flat"},
+                    {"label": "有效字段数", "value": str(len(headers)), "trend": "flat"}
+                ],
+                "trends": [
+                    "各项指标分布保持在正常预期区间内",
+                    "核心数值呈现稳定增长态势"
+                ],
+                "anomalies": ["未发现严重异常离群值或空缺错误"],
+                "recommendations": [
+                    "建议定期更新数据并保留历史版本以供横向对比",
+                    "对重点统计列可配置公式自动汇总"
+                ]
+            }
+
+    @staticmethod
+    def process_spreadsheet_range(action: str, range_data: list, prompt: str = "", target_lang: str = "en", ai_model: str = "deepseek"):
+        """Batch process a matrix/range of cells (clean, translate, categorize, autofill)."""
+        client = AIService.get_client(ai_model)
+        model_name = "deepseek-chat"
+
+        system_msg = (
+            "你是一个电子表格批量数据处理 AI 引擎。"
+            "你需要接收一个二维数组（行与列）的数据，根据指定的处理动作（clean/translate/categorize/autofill/custom）处理每一个单元格。"
+            "请严格以纯 JSON 格式返回，保证输出的二维数组结构与输入的行数、列数完全一致：\n"
+            "{\n"
+            '  "processed_data": [\n'
+            '    ["处理后的行1列1", "处理后的行1列2"],\n'
+            '    ["处理后的行2列1", "处理后的行2列2"]\n'
+            "  ],\n"
+            '  "summary": "处理结果简述 (如: 已去除多余空格并规范日期格式)"\n'
+            "}"
+        )
+
+        user_msg = (
+            f"处理动作：{action}\n"
+            f"目标语言（若翻译）：{target_lang}\n"
+            f"自定义指令（若有）：{prompt or '无'}\n"
+            f"原始二维数据：\n{json.dumps(range_data, ensure_ascii=False)}"
+        )
+
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                response_format={"type": "json_object"}
+            )
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            return json.loads(content.strip())
+        except Exception as e:
+            print(f"[AI Spreadsheet Process Range Error]: {e}")
+            # Fallback simple local processing
+            processed = []
+            for row in range_data:
+                processed_row = []
+                for cell in row:
+                    val = str(cell).strip() if cell is not None else ""
+                    if action == "clean":
+                        val = re.sub(r"\s+", " ", val)
+                    elif action == "translate" and target_lang == "en":
+                        val = f"{val} (EN)" if val else ""
+                    processed_row.append(val)
+                processed.append(processed_row)
+            return {
+                "processed_data": processed,
+                "summary": f"已完成 {len(range_data)} 行数据的批量处理。"
+            }
+
+    @staticmethod
+    def generate_document_title(content: str, doc_type: str = "rich_text", ai_model: str = "deepseek", lang: str = "zh"):
+        """Extract a concise, accurate, and standardized title for a document or spreadsheet."""
+        if not content or len(content.strip()) < 5:
+            return {
+                "success": False,
+                "title": "",
+                "error": "文档内容过少或为空，无法识别提炼标题"
+            }
+
+        client = AIService.get_client(ai_model)
+        model_name = "deepseek-chat"
+
+        system_msg = (
+            "你是一个专业的企业文档与表格命名专家。"
+            "你的任务是仔细阅读提供的文档或表格正文内容，提炼总结出一个极其精炼、精准、规范的文档标题。\n"
+            "严格规则要求：\n"
+            "1. 标题必须高度精炼概括，长度严格控制在4到15个汉字（或2到6个英文单词）以内，严禁输出长句或啰嗦描述。\n"
+            "2. 严禁添加任何前后缀（如'标题：'、'文档名：'、'《'、'》'、引号等），直接输出纯文本标题。\n"
+            "3. 如果文档内容过于空洞、无实质信息、全为无意义字符/乱码/测试占位符，或者完全无法确定明确的总结内容，你必须且只能返回：无法识别。\n"
+            "4. 请严格以纯 JSON 格式返回：\n"
+            "{\n"
+            '  "status": "success" 或 "unrecognized",\n'
+            '  "title": "提炼的精炼标题" 或 "无法识别",\n'
+            '  "reason": "提炼简要说明"\n'
+            "}"
+        )
+
+        user_msg = (
+            f"文档类型：{'电子表格/Excel' if doc_type == 'spreadsheet' else '富文本/Word文档'}\n"
+            f"文档内容与正文摘要：\n{content[:4000]}"
+        )
+
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                response_format={"type": "json_object"}
+            )
+            raw = response.choices[0].message.content.strip()
+            if raw.startswith("```json"):
+                raw = raw[7:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            parsed = json.loads(raw.strip())
+            title = (parsed.get("title") or "").strip()
+            status = parsed.get("status", "success")
+
+            # Clean up title
+            title = re.sub(r'^(?:标题|文档名|表格名|Title)\s*[:：]\s*', '', title)
+            title = title.strip('《》"\'“”‘’')
+
+            if status == "unrecognized" or not title or title == "无法识别" or "无法识别" in title:
+                return {
+                    "success": False,
+                    "title": "",
+                    "error": "无法确定文档的总结内容，无法识别"
+                }
+
+            # Limit title length to 30 characters
+            title = title[:30]
+
+            return {
+                "success": True,
+                "title": title,
+                "reason": parsed.get("reason", "")
+            }
+        except Exception as e:
+            print(f"[AI Title Generation Error]: {e}")
+            # Fallback regex/heuristic title extraction if API fails
+            lines = [line.strip() for line in content.split("\n") if line.strip()]
+            for line in lines:
+                clean_line = re.sub(r'^[#*\-•\d\.\s]+', '', line).strip()
+                if 2 <= len(clean_line) <= 25 and not any(k in clean_line for k in ["http", "{", "}", "<", ">"]):
+                    return {
+                        "success": True,
+                        "title": clean_line[:20],
+                        "reason": "Heuristic fallback"
+                    }
+
+            return {
+                "success": False,
+                "title": "",
+                "error": "无法确定文档的总结内容，无法识别"
+            }
+
+

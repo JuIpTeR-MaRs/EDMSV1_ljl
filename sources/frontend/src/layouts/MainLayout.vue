@@ -126,7 +126,7 @@
           >
             {{ (locale === 'zh-CN' ? auth.user?.role_name : (auth.user?.role_name_en || auth.user?.role_name)) || (auth.user?.is_super_admin ? t('common.roles.admin') : (auth.user?.is_manager ? t('common.roles.manager') : t('common.roles.user'))) }}
           </el-tag>
-          <el-avatar size="small" :style="{ backgroundColor: 'var(--el-color-primary)' }">
+          <el-avatar size="small" :src="auth.user?.avatar_url" :style="{ backgroundColor: 'var(--el-color-primary)' }">
             {{ (auth.user?.display_name || auth.user?.login_name || "U").charAt(0).toUpperCase() }}
           </el-avatar>
           <el-button v-if="auth.user" type="primary" link @click="router.push({ name: 'personal' })">{{ auth.user.display_name || auth.user.login_name }}</el-button>

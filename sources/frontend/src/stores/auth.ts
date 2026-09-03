@@ -17,6 +17,9 @@ export const useAuthStore = defineStore("auth", () => {
     role_name_en?: string;
     role_level?: number;
     role_code?: string;
+    phone?: string;
+    email?: string;
+    avatar_url?: string;
   } | null>(null);
 
   const isAuthenticated = computed(() => !!token.value);

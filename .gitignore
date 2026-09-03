@@ -34,6 +34,7 @@ sources/backend/app/fastembed_cache/
 sources/backend/fastembed_cache/
 sources/backend/app/static/uploads/
 sources/backend/app/static/attachments/
+sources/backend/app/static/avatars/
 sources/backend/debug_audio/
 sources/debug_audio/
 tool_caches/

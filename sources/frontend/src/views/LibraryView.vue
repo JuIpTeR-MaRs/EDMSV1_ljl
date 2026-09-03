@@ -97,7 +97,12 @@
       <div class="toolbar-container" :class="{ 'is-collapsed': toolbarCollapsed }">
         <div class="toolbar" v-show="!toolbarCollapsed">
           <div class="toolbar-left">
-            <el-button type="primary" :icon="Plus" @click="createDoc">{{ t("library.newDoc") }}</el-button>
+            <el-button type="primary" :icon="Document" @click="createDoc('rich_text')">
+              {{ t("library.newWordDoc", "新建 Word 文档") }}
+            </el-button>
+            <el-button type="success" :icon="Grid" @click="createDoc('spreadsheet')">
+              {{ t("library.newSheetDoc", "新建 Excel 表格") }}
+            </el-button>
             <el-tag v-if="currentSpaceId" closable @close="clearSpaceFilter" type="info" size="large" effect="plain" style="margin-left: 10px; font-weight: 600;">
               <el-icon><Folder /></el-icon> {{ currentSpaceName }}
             </el-tag>
@@ -112,6 +117,15 @@
               style="display: inline-flex; margin-right: 8px;"
             >
               <el-button :icon="Upload">{{ t("library.importDocx") }}</el-button>
+            </el-upload>
+            <el-upload
+              :show-file-list="false"
+              accept=".xlsx,.xls,.csv"
+              action="#"
+              :before-upload="onImportExcel"
+              style="display: inline-flex; margin-right: 8px;"
+            >
+              <el-button :icon="Upload">{{ t("library.importExcel", "导入 Excel") }}</el-button>
             </el-upload>
             <el-upload
               :show-file-list="false"
@@ -168,9 +182,21 @@
               />
             </el-select>
             <el-select
+              v-model="docTypeFilter"
+              clearable
+              style="width: 140px"
+              :placeholder="t('library.docTypeFilter', '文档类型')"
+              @change="load"
+            >
+              <el-option :label="t('library.docTypeAll', '全部类型')" value="" />
+              <el-option :label="t('library.docTypeRichText', 'Word 文档')" value="rich_text" />
+              <el-option :label="t('library.docTypeSpreadsheet', 'Excel 表格')" value="spreadsheet" />
+              <el-option :label="t('library.docTypePdf', 'PDF 文档')" value="pdf" />
+            </el-select>
+            <el-select
               v-model="scope"
               clearable
-              style="width: 200px"
+              style="width: 180px"
               :placeholder="t('library.scopePlaceholder')"
               @change="load"
             >
@@ -182,7 +208,7 @@
             <el-select
               v-model="statusFilter"
               clearable
-              style="width: 180px"
+              style="width: 160px"
               :placeholder="t('library.statusFilter')"
               @change="load"
             >
@@ -222,9 +248,24 @@
           </template>
         </el-table-column>
         <el-table-column prop="doc_number" :label="t('library.colId')" width="140" />
-        <el-table-column prop="title" :label="t('library.colTitle')" min-width="180">
+        <el-table-column prop="doc_type" :label="t('library.colDocType', '文档类型')" width="130" align="center">
           <template #default="{ row }">
-            <div style="font-weight: 500; margin-bottom: 4px;">{{ row.title }}</div>
+            <el-tag v-if="row.doc_type === 'spreadsheet'" size="small" type="success" effect="light" style="font-weight: 500;">
+              <el-icon style="margin-right: 3px; vertical-align: -1px;"><Grid /></el-icon>{{ t('library.docTypeSpreadsheet', 'Excel 表格') }}
+            </el-tag>
+            <el-tag v-else-if="row.doc_type === 'pdf'" size="small" type="danger" effect="light" style="font-weight: 500;">
+              <el-icon style="margin-right: 3px; vertical-align: -1px;"><Document /></el-icon>{{ t('library.docTypePdf', 'PDF 文档') }}
+            </el-tag>
+            <el-tag v-else size="small" type="primary" effect="light" style="font-weight: 500;">
+              <el-icon style="margin-right: 3px; vertical-align: -1px;"><Document /></el-icon>{{ t('library.docTypeRichText', 'Word 文档') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="title" :label="t('library.colTitle')" min-width="200">
+          <template #default="{ row }">
+            <div style="font-weight: 500; margin-bottom: 2px;">
+              <span>{{ row.title }}</span>
+            </div>
             <div v-if="row.space_names && row.space_names.length" style="display: flex; flex-wrap: wrap; gap: 4px;">
               <el-tag v-for="name in row.space_names" :key="name" size="small" type="info" effect="light" round>
                 {{ t('space.' + name, name) }}
@@ -370,7 +411,7 @@ import DocumentShareDialog from "@/components/DocumentShareDialog.vue";
 import DocumentMoveDialog from "@/components/DocumentMoveDialog.vue";
 import SpaceCreateDialog from "@/components/SpaceCreateDialog.vue";
 import MultiDocQaDialog from "@/components/MultiDocQaDialog.vue";
-import { Search, Plus, Folder, Connection, Upload, Expand, Fold, MagicStick, Refresh, ArrowUp, ArrowDown, Share, Delete, More, Reading, Lock, Close, ChatDotRound, Edit, Document } from "@element-plus/icons-vue";
+import { Search, Plus, Folder, Connection, Upload, Expand, Fold, MagicStick, Refresh, ArrowUp, ArrowDown, Share, Delete, More, Reading, Lock, Close, ChatDotRound, Edit, Document, Grid } from "@element-plus/icons-vue";
 import { formatLocalDate } from "@/utils/date";
 import { useAuthStore } from "@/stores/auth";
 import { Editor } from "@tiptap/vue-3";
@@ -387,6 +428,7 @@ interface DocRow {
   id: number;
   title: string;
   status: string;
+  doc_type?: string;
   my_role?: string;
   can_manage_permissions?: boolean;
   owner_name?: string;
@@ -403,6 +445,7 @@ const items = ref<DocRow[]>([]);
 const loading = ref(false);
 const scope = ref("");
 const statusFilter = ref("");
+const docTypeFilter = ref("");
 const shareOpen = ref(false);
 const shareDocId = ref<number | null>(null);
 const searchQuery = ref("");
@@ -580,12 +623,18 @@ const currentPage = ref(1);
 const pageSize = ref(10);
 
 const filteredItems = computed(() => {
-  if (!searchQuery.value) return items.value;
-  const q = searchQuery.value.toLowerCase();
-  return items.value.filter(item => 
-    item.title?.toLowerCase().includes(q) || 
-    item.doc_number?.toLowerCase().includes(q)
-  );
+  let res = items.value;
+  if (docTypeFilter.value) {
+    res = res.filter(item => (item.doc_type || 'rich_text') === docTypeFilter.value);
+  }
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase();
+    res = res.filter(item => 
+      item.title?.toLowerCase().includes(q) || 
+      item.doc_number?.toLowerCase().includes(q)
+    );
+  }
+  return res;
 });
 
 const paginatedItems = computed(() => {
@@ -598,6 +647,7 @@ async function load() {
   try {
     const params: Record<string, string> = { scope: scope.value || "all" };
     if (statusFilter.value) params.status = statusFilter.value;
+    if (docTypeFilter.value) params.doc_type = docTypeFilter.value;
     if (currentSpaceId.value) params.space_id = currentSpaceId.value;
     if (currentDeptId.value) params.dept_id = currentDeptId.value;
     const { data } = await api.get("/documents", { params });
@@ -733,9 +783,12 @@ function clearSpaceFilter() {
   load();
 }
 
-async function createDoc() {
+async function createDoc(type: string = "rich_text") {
   try {
-    const payload: any = { title: t("common.untitled") };
+    const payload: any = { 
+      title: type === "spreadsheet" ? "未命名表格" : t("common.untitled"),
+      doc_type: type
+    };
     if (currentSpaceId.value && currentSpaceId.value !== "unassigned") {
       payload.space_id = currentSpaceId.value;
     }
@@ -750,6 +803,29 @@ async function createDoc() {
     console.error("Document creation failed:", err);
     ElMessage.error(err.response?.data?.error || t("library.createFailed"));
   }
+}
+
+async function onImportExcel(file: UploadRawFile) {
+  if (file.size > 500 * 1024 * 1024) {
+    ElMessage.warning(t('library.fileTooLarge', '上传的文件太大，最大允许 500MB。'));
+    return false;
+  }
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (currentSpaceId.value && currentSpaceId.value !== "unassigned") {
+      fd.append("space_id", currentSpaceId.value);
+    }
+    const { data } = await api.post("/documents/import-excel", fd);
+    ElMessage.success(t("library.importExcelSuccess", "Excel 导入成功"));
+    if (data && data.id) {
+      router.push({ name: "editor", params: { id: data.doc_number || data.id } });
+    }
+  } catch (err: any) {
+    console.error(err);
+    ElMessage.error(err.response?.data?.error || t("library.importExcelFailed", "Excel 导入失败"));
+  }
+  return false;
 }
 
 function open(id: number | string) {
